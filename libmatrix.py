@@ -1,4 +1,4 @@
-import numpy, subprocess
+import numpy, subprocess, warnings
 from mpi import InterComm
 
 exe, pyext = __file__.rsplit( '.', 1 )
@@ -576,6 +576,10 @@ class Operator( Object ):
     out = Vector( self.rangemap )
     self.comm.operator_apply( self.handle, vec.handle, out.handle )
     return out
+
+  def matvec( self, vec ):
+    warnings.warn( 'matvec deprecated, use apply instead', DeprecationWarning )
+    return self.apply( vec )
 
   def toarray( self ):
 
