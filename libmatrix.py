@@ -179,9 +179,9 @@ class LibMatrix( InterComm ):
     self.bcast( [ self_handle, other_handle ], handle_t )
 
   @bcast_token
-  def vector_update( self, self_handle, other_handle, alpha, beta ):
+  def vector_update( self, self_handle, other_handle, scale_self, scale_other ):
     self.bcast( [ self_handle, other_handle ], handle_t )
-    self.bcast( [ alpha, beta ], scalar_t )
+    self.bcast( [ scale_self, scale_other ], scalar_t )
 
   @bcast_token
   def matrix_new_static( self, graph_handle ):
@@ -202,10 +202,10 @@ class LibMatrix( InterComm ):
     return precon_handle
 
   @bcast_token
-  def matrix_add( self, mat1_handle, mat2_handle, alpha, beta ):
+  def matrix_add( self, mat1_handle, mat2_handle, scale_mat1, scale_mat2 ):
     sum_handle = self.claim_handle()
     self.bcast( [ sum_handle, mat1_handle, mat2_handle ], handle_t )
-    self.bcast( [ alpha, beta ], scalar_t )
+    self.bcast( [ scale_mat1, scale_mat2 ], scalar_t )
     return sum_handle
 
   @bcast_token
@@ -585,8 +585,9 @@ class Operator( Object ):
 
     array = numpy.empty( self.shape, dtype=float )
     for i in range( self.shape[1] ):
-      e = Vector( self.domainmap )
+      e = VectorBuilder( self.domainmap )
       e.add_global( [[i]], [1] )
+      e = e.complete()
       array[:,i] = self.apply( e ).toarray()
     return array
 
@@ -633,19 +634,28 @@ class Precon( Operator ):
 
 class Matrix( Operator ):
 
-  def __add__( self, other ):
-    assert isinstance( self, Matrix )
+  def add( self, other, scale_self=1., scale_other=1. ):
     assert isinstance( other, Matrix )
     assert self.shape == other.shape
-    handle = self.comm.matrix_add( self.handle, other.handle, 1, 1 )
+    assert isinstance( scale_self, (int,float) )
+    assert isinstance( scale_other, (int,float) )
+    handle = self.comm.matrix_add( self.handle, other.handle, scale_self, scale_other )
     return Matrix( handle, self.domainmap, self.rangemap )
 
+  def __add__( self, other ):
+    return self.add( other, 1, 1 )
+
   def __sub__( self, other ):
-    assert isinstance( self, Matrix )
-    assert isinstance( other, Matrix )
-    assert self.shape == other.shape
-    handle = self.comm.matrix_add( self.handle, other.handle, 1, -1 )
-    return Operator( handle, self.domainmap, self.rangemap )
+    return self.add( other, 1, -1 )
+
+  def __mul__( self, other ):
+    assert isinstance( other, (int,float) )
+    return self.add( self, other, 0 ) # suboptimal!
+
+  def __div__( self, other ):
+    assert isinstance( other, (int,float) )
+    assert other != 0, 'division by zero'
+    return self.add( self, 1./other, 0 ) # suboptimal!
 
   def norm( self ):
     return self.comm.matrix_norm( self.handle )

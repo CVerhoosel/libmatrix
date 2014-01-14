@@ -397,7 +397,7 @@ private:
     Teuchos::Array<global_t> elementList( ndofs );
     scatterv( elementList.getRawPtr(), ndofs );
   
-    auto node = Kokkos::DefaultNode::getDefaultNode ();
+    auto node = Kokkos::DefaultNode::getDefaultNode();
     auto comm = Tpetra::DefaultPlatform::getDefaultPlatform().getComm();
     auto map = Teuchos::rcp( new map_t( size, elementList, indexbase, comm, node ) );
   
@@ -925,7 +925,6 @@ private:
       ldof++;
     }
 
-    auto node = Kokkos::DefaultNode::getDefaultNode ();
     auto comm = Tpetra::DefaultPlatform::getDefaultPlatform().getComm();
     auto conmat = Teuchos::rcp( new ConstrainedOperator( matrix, con_items ) );
 
