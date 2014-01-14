@@ -70,10 +70,7 @@ typedef Tpetra::RowMatrix<scalar_t,local_t,global_t,node_t> rowmatrix_t;
 typedef Tpetra::CrsMatrix<scalar_t,local_t,global_t,node_t> crsmatrix_t;
 typedef Tpetra::CrsGraph<local_t,global_t,node_t> crsgraph_t;
 typedef Tpetra::RowGraph<local_t,global_t,node_t> rowgraph_t;
-typedef Belos::SolverManager<scalar_t,multivector_t,operator_t> solvermanager_t;
 typedef Belos::SolverFactory<scalar_t,multivector_t,operator_t> solverfactory_t;
-typedef Ifpack2::Preconditioner<scalar_t,local_t,global_t,node_t> precon_t;
-typedef Ifpack2::Factory preconfactory_t;
 typedef Teuchos::ScalarTraits<scalar_t>::magnitudeType magnitude_t;
 typedef Tpetra::Export<local_t,global_t,node_t> export_t;
 
@@ -306,6 +303,7 @@ public:
       }
       libmat.out(DEBUG) << "leave " << funcnames[c] << std::endl;
     }
+    Teuchos::TimeMonitor::summarize();
     return 0;
   }
 
@@ -956,7 +954,7 @@ private:
     auto matrix = objects.get<const crsmatrix_t>( handle.matrix, out(DEBUG) );
     auto preconparams = objects.get<const params_t>( handle.preconparams, out(DEBUG) );
    
-    preconfactory_t factory;
+    Ifpack2::Factory factory;
     auto precon = factory.create( supportedPreconNames[handle.precontype], matrix );
   
     precon->setParameters( *preconparams );
@@ -1049,23 +1047,22 @@ private:
     auto solverparams = objects.get<params_t>( handle.solverparams, out(DEBUG) );
 
     solverfactory_t factory;
-    auto solver = factory.create( factory.supportedSolverNames()[handle.solvertype], solverparams );
+    auto solvermgr = factory.create( factory.supportedSolverNames()[handle.solvertype], solverparams );
   
     // called on the linear problem, before they can solve it.
     linprob->setProblem();
   
     // Tell the solver what problem you want to solve.
-    solver->setProblem( linprob );
-  
+    solvermgr->setProblem( linprob );
+
     // Attempt to solve the linear system.  result == Belos::Converged
     // means that it was solved to the desired tolerance.  This call
     // overwrites X with the computed approximate solution.
-    Belos::ReturnType result = solver->solve();
+    Belos::ReturnType result = solvermgr->solve();
+    ASSERT( result == Belos::Converged );
 
-    // Ask the solver how many iterations the last solve() took.
-    const int numIters = solver->getNumIters();
-  
-    out(INFO) << "solver finished in " << numIters << " iterations with result " << result << std::endl;
+    const int numIters = solvermgr->getNumIters();
+    out(INFO) << "solver converged in " << numIters << " iterations" << std::endl;
   }
 
   void set_verbosity() /* set minimum displayed log level
