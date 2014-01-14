@@ -92,7 +92,7 @@ def test( nprocs, size ):
   cons = AA.solve( rhs, symmetric=True )
   cons.nan_from_supp( AA )
 
-  P = libmatrix.Precon( A, 'ILUT' )
+  P = A.build_precon( 'ILUT' )
   x = A.solve( precon=P, constrain=cons, symmetric=True )
 
   result = x.toarray()

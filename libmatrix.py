@@ -612,6 +612,8 @@ class Operator( Object ):
     if symmetric:
       linprob.set_hermitian()
     if precon:
+      if isinstance( precon, str ):
+        precon = Precon( self, precon )
       linprob.set_precon( precon )
     if not name:
       name = 'CG' if symmetric else 'GMRES'
@@ -621,7 +623,7 @@ class Operator( Object ):
 class Precon( Operator ):
 
   def __init__( self, matrix, precontype, preconparams=None ):
-    assert isinstance( matrix, Operator )
+    assert isinstance( matrix, Matrix )
     comm = matrix.comm
     if not preconparams:
       preconparams = ParameterList( comm )
@@ -664,6 +666,9 @@ class Matrix( Operator ):
     array = self.comm.matrix_toarray( self.handle )
     assert array.shape == self.shape
     return array
+
+  def build_precon( self, precontype, preconparams=None ):
+    return Precon( self, precontype, preconparams )
 
 
 class MatrixBuilder( Object ):
