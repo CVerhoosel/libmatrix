@@ -89,11 +89,11 @@ def test( nprocs, size ):
   AA.add_global( idx=[[-1],[-1]], data=[[1]] )
   AA = AA.complete()
 
-  cons = AA.solve( rhs, symmetric=True )
+  cons = AA.solve( rhs, symmetric=True, tol=1e-10 )
   cons.nan_from_supp( AA )
 
   P = A.build_precon( 'ILUT' )
-  x = A.solve( precon=P, constrain=cons, symmetric=True )
+  x = A.solve( precon=P, constrain=cons, symmetric=True, tol=1e-10 )
 
   result = x.toarray()
   print 'solve result:', result

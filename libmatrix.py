@@ -319,9 +319,10 @@ class Object( object ):
 
 class ParameterList( Object ):
 
-  def __init__( self, comm ):
-    self.items = {}
+  def __init__( self, comm, items={} ):
     Object.__init__( self, comm, comm.params_new() )
+    self.items = {}
+    self.update( items )
 
   #<ParameterList name="ANONYMOUS">
   #  <Parameter docString="" id="0" isDefault="false" isUsed="true" name="foo" type="double" value="1.00000000000000000e+00"/>
@@ -333,6 +334,7 @@ class ParameterList( Object ):
   def toxml( items ):
     s = '<ParameterList>\n'
     for key, value in items.items():
+      assert isinstance( key, str ), 'parameter keys should be strings'
       if isinstance( value, int ):
         dtype = 'int'
       elif isinstance( value, float ):
@@ -346,11 +348,14 @@ class ParameterList( Object ):
   def cprint ( self ):
     self.comm.params_print( self.handle )
 
+  def update( self, items ):
+    if items:
+      xml = self.toxml( items )
+      self.comm.params_update( self.handle, xml )
+      self.items.update( items )
+
   def __setitem__( self, key, value ):
-    assert isinstance( key, str ), 'Expected first argument to be a string'
-    self.items[ key ] = value
-    xml = self.toxml({ key: value })
-    self.comm.params_update( self.handle, xml )
+    self.update({ key: value })
 
   def __str__( self ):
     return 'ParameterList( %s )' % ', '.join( '%s=%s' % item for item in self.items.items() )
@@ -607,7 +612,8 @@ class Operator( Object ):
       matrix = self
     return LinearProblem( matrix, rhs, lhs )
 
-  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, params=None ):
+  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0 ):
+    assert tol != 0, 'direct solving not implemented yet; please specify a solver tolerance'
     linprob = self.linearproblem( rhs, lhs, constrain )
     if symmetric:
       linprob.set_hermitian()
@@ -617,19 +623,21 @@ class Operator( Object ):
       linprob.set_precon( precon )
     if not name:
       name = 'CG' if symmetric else 'GMRES'
-    return linprob.solve( name, params )
+    return linprob.solve( name=name, tol=tol )
 
 
 class Precon( Operator ):
 
-  def __init__( self, matrix, precontype, preconparams=None ):
+  def __init__( self, matrix, precontype, fill=5., absthreshold=0., relthreshold=1., relax=0. ):
     assert isinstance( matrix, Matrix )
     comm = matrix.comm
-    if not preconparams:
-      preconparams = ParameterList( comm )
-    else:
-      assert isinstance( preconparams, ParameterList )
-      assert preconparams.comm is comm
+    preconparams = ParameterList( comm, {
+      'fact: %s level-of-fill' % precontype.lower(): float(fill),
+      'fact: absolute threshold': float(absthreshold),
+      'fact: relative threshold': float(relthreshold),
+      'fact: relax value': float(relax),
+    })
+    preconparams.cprint()
     myhandle = comm.precon_new( matrix.handle, _precons.index(precontype), preconparams.handle )
     Operator.__init__( self, myhandle, matrix.rangemap, matrix.domainmap )
 
@@ -667,8 +675,8 @@ class Matrix( Operator ):
     assert array.shape == self.shape
     return array
 
-  def build_precon( self, precontype, preconparams=None ):
-    return Precon( self, precontype, preconparams )
+  def build_precon( self, precontype, **kwargs ):
+    return Precon( self, precontype, **kwargs )
 
 
 class MatrixBuilder( Object ):
@@ -744,13 +752,18 @@ class LinearProblem( Object ):
     assert precon.shape == self.matrix.shape
     self.comm.linearproblem_set_precon( self.handle, precon.handle, right )
 
-  def solve( self, name='GMRES', params=None ):
-    if not params:
-      params = ParameterList( self.comm )
-    assert isinstance( params, ParameterList )
-    assert params.comm is self.comm
+  def solve( self, name, tol, maxiter=9999 ):
+    # from BelosTypes.h
+    Warnings, IterationDetails, OrthoDetails, FinalSummary, TimingDetails, StatusTestDetails, Debug = 2**numpy.arange(7)
+    General, Brief = range(2)
+    solverparams = ParameterList( self.comm, {
+      'Verbosity': StatusTestDetails | FinalSummary,
+      'Maximum Iterations': maxiter,
+      'Output Style': Brief,
+      'Convergence Tolerance': tol,
+    })
     solver_handle = _solvers.index( name )
-    self.comm.linearproblem_solve( self.handle, params.handle, solver_handle )
+    self.comm.linearproblem_solve( self.handle, solverparams.handle, solver_handle )
     return self.lhs
 
   def res( self ):
