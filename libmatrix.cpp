@@ -149,7 +149,7 @@ class ChainOperator : public operator_t {
 public:
 
   ChainOperator( Teuchos::RCP<const operator_t> op0, Teuchos::RCP<const operator_t> op1 )
-    : op({ op0, op1 }) { ASSERT( op0->getRangeMap() == op1->getDomainMap() ); }
+    : op{ op0, op1 } { ASSERT( op0->getRangeMap() == op1->getDomainMap() ); }
 
   const Teuchos::RCP<const map_t> &getDomainMap() const {
     return op[0]->getDomainMap();
@@ -189,9 +189,7 @@ class ObjectArray {
 public:
 
   inline void set( handle_t handle, Teuchos::RCP<Teuchos::Describable> object, std::ostream &out ) {
-    if ( out != blackHole ) {
-      out << "set #" << handle << ": " << object->description() << std::endl;
-    }
+    out << "set #" << handle << ": " << object->description() << std::endl;
     if ( handle == objects.size() ) {
       objects.push_back( object );
     }
@@ -204,16 +202,12 @@ public:
   template <class T>
   inline Teuchos::RCP<T> get( handle_t handle, std::ostream &out ) {
     auto object = objects[handle];
-    if ( out != blackHole ) {
-      out << "get #" << handle << ": " << object->description() << std::endl;
-    }
+    out << "get #" << handle << ": " << object->description() << std::endl;
     return Teuchos::rcp_dynamic_cast<T>( object, true );
   }
 
   inline void release( handle_t handle, std::ostream &out ) {
-    if ( out != blackHole ) {
-      out << "release #" << handle << std::endl;
-    }
+    out << "release #" << handle << std::endl;
     objects[handle] = Teuchos::RCP<Teuchos::Describable>();
   }
 
