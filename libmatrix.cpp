@@ -793,19 +793,20 @@ private:
   
   void matrix_complete() /* export matrix and fill-complete
      
-       -> broadcast HANDLE handle.{matrix,builder,exporter}
+       -> broadcast HANDLE handle.{matrix,builder,exporter,domainmap}
   */{
   
-    struct { handle_t matrix, builder, exporter; } handle;
+    struct { handle_t matrix, builder, exporter, domainmap; } handle;
     bcast( &handle );
   
     auto builder = objects.get<const crsmatrix_t>( handle.builder, out(DEBUG) );
     auto exporter = objects.get<const export_t>( handle.exporter, out(DEBUG) );
-    auto targetmap = exporter->getTargetMap();
+    auto domainmap = objects.get<const map_t>( handle.domainmap, out(DEBUG) );
+    auto rangemap = exporter->getTargetMap();
   
     out(INFO) << "completing matrix #" << handle.builder << std::endl;
   
-    auto matrix = Tpetra::exportAndFillCompleteCrsMatrix( builder, *exporter, targetmap, targetmap );
+    auto matrix = Tpetra::exportAndFillCompleteCrsMatrix( builder, *exporter, domainmap, rangemap );
     // defaults to "ADD" combine mode (reverseMode=false in Tpetra_CrsMatrix_def.hpp)
   
     objects.set( handle.matrix, matrix, out(DEBUG) );

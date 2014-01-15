@@ -221,9 +221,9 @@ class LibMatrix( InterComm ):
     self.send( rank, data.ravel(), scalar_t )
 
   @bcast_token
-  def matrix_complete( self, builder_handle, export_handle ):
+  def matrix_complete( self, builder_handle, export_handle, domainmap_handle ):
     matrix_handle = self.claim_handle()
-    self.bcast( [ matrix_handle, builder_handle, export_handle ], handle_t )
+    self.bcast( [ matrix_handle, builder_handle, export_handle, domainmap_handle ], handle_t )
     return matrix_handle
 
   @bcast_token
@@ -555,11 +555,8 @@ class VectorBuilder( Object ):
     rank = first( ( local != -1 ).all( axis=1 ) )
     self.add( rank, [local[rank]], data )
 
-  def complete( self, export=None ):
-    if export is None:
-      export = self.map.export
-    assert isinstance( export, Export )
-    assert self.map == export.srcmap
+  def complete( self ):
+    export = self.map.export
     handle = self.comm.vector_complete( self.handle, export.handle )
     return Vector( export.dstmap, handle )
 
@@ -712,13 +709,11 @@ class MatrixBuilder( Object ):
     rank = first( (rowlocal!=-1).all(axis=1) & (collocal!=-1).all(axis=1) )
     self.add( rank, ( rowlocal[rank], collocal[rank] ), data )
 
-  def complete( self, export=None ):
-    if export is None:
-      export = self.rowmap.export
-    assert isinstance( export, Export )
-    assert self.rowmap == export.srcmap
-    handle = self.comm.matrix_complete( self.handle, export.handle )
-    return Matrix( handle, export.dstmap, export.dstmap )
+  def complete( self ):
+    export = self.rowmap.export
+    domainmap = self.colmap.export.dstmap
+    handle = self.comm.matrix_complete( self.handle, export.handle, domainmap.handle )
+    return Matrix( handle, domainmap, export.dstmap )
 
 
 class LinearProblem( Object ):
