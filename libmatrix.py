@@ -747,7 +747,7 @@ class LinearProblem( Object ):
     assert precon.shape == self.matrix.shape
     self.comm.linearproblem_set_precon( self.handle, precon.handle, right )
 
-  def solve( self, name, tol, maxiter=9999 ):
+  def solve( self, name, tol, maxiter=1000, outfreq=10 ):
     # from BelosTypes.h
     Warnings, IterationDetails, OrthoDetails, FinalSummary, TimingDetails, StatusTestDetails, Debug = 2**numpy.arange(7)
     General, Brief = range(2)
@@ -756,6 +756,7 @@ class LinearProblem( Object ):
       'Maximum Iterations': maxiter,
       'Output Style': Brief,
       'Convergence Tolerance': tol,
+      'Output Frequency': outfreq,
     })
     solver_handle = _solvers.index( name )
     self.comm.linearproblem_solve( self.handle, solverparams.handle, solver_handle )
