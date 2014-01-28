@@ -179,6 +179,10 @@ class LibMatrix( InterComm ):
     self.bcast( [ self_handle, other_handle ], handle_t )
 
   @bcast_token
+  def vector_idiv( self, self_handle, other_handle ):
+    self.bcast( [ self_handle, other_handle ], handle_t )
+
+  @bcast_token
   def vector_update( self, self_handle, other_handle, scale_self, scale_other ):
     self.bcast( [ self_handle, other_handle ], handle_t )
     self.bcast( [ scale_self, scale_other ], scalar_t )
@@ -443,6 +447,9 @@ class Vector( Object ):
     assert array.shape == self.shape
     return array
 
+  def __len__ ( self ):
+    return self.shape[0]
+
   def norm( self ):
     return self.comm.vector_norm( self.handle )
 
@@ -513,6 +520,18 @@ class Vector( Object ):
   def __imul__( self, other ):
     other = self.asme( other )
     self.comm.vector_imul( self.handle, other.handle )
+    return self
+
+  def __div__( self, other ):
+    return self.copy().__idiv__( other )
+
+  def __rdiv__ ( self, other ):
+    other = self.asme( other, copy=True )
+    return other.__idiv__( self )
+
+  def __idiv__( self, other ):
+    other = self.asme( other )
+    self.comm.vector_idiv( self.handle, other.handle )
     return self
 
   def asme( self, other, copy=False ):

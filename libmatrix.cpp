@@ -631,6 +631,23 @@ private:
     }
   }
 
+  void vector_idiv() /* self *= other
+
+       -> broadcast HANDLE handle.{self,other}
+  */{
+
+    struct { handle_t self, other; } handle;
+    bcast( &handle );
+    auto self = objects.get<vector_t>( handle.self, out(DEBUG) );
+    auto other = objects.get<const vector_t>( handle.other, out(DEBUG) );
+    ASSERT( self->getMap() == other->getMap() );
+    auto other_i = other->getData().begin();
+    for ( auto &self_i : self->getDataNonConst() ) {
+      self_i /= *other_i;
+      other_i++;
+    }
+  }
+
   void vector_copy() /* logical OR vectors
 
        -> broadcast HANDLE handle.{copy,orig}
