@@ -125,6 +125,12 @@ class LibMatrix( InterComm ):
     self.bcast( value, scalar_t )
 
   @bcast_token
+  def vector_truncateabove( self, vector_handle, threshold, replace ):
+    self.bcast( vector_handle, handle_t )
+    self.bcast( threshold, scalar_t )
+    self.bcast( replace  , scalar_t )
+
+  @bcast_token
   def vector_add_block( self, handle, rank, idx, data ):
     n = len(idx)
     assert len(data) == n
@@ -439,6 +445,7 @@ class Vector( Object ):
       handle = map.comm.vector_new( map.handle )
     self.map = map
     self.shape = map.size,
+    self.size = map.size
     Object.__init__( self, map.comm, handle )
 
   def toarray( self ):
@@ -463,6 +470,19 @@ class Vector( Object ):
 
   def fill( self, value ):
     self.comm.vector_fill( self.handle, value )
+
+  def less ( self, other ):
+    if isinstance( other, Vector ):
+      nanvec = self-other
+      other = 0
+    else:
+      nanvec = self.copy()
+    nanvec.truncateabove( threshold=other, replace=numpy.nan )
+    return nanvec
+
+  def truncateabove ( self, threshold, replace=None ):
+    assert isinstance( threshold, (int,float) )
+    self.comm.vector_truncateabove( self.handle, threshold, threshold if replace is None else replace )
 
   def copy( self ):
     handle = self.comm.vector_copy( self.handle )
@@ -589,6 +609,7 @@ class Operator( Object ):
     self.domainmap = domainmap
     self.rangemap = rangemap
     self.shape = rangemap.size, domainmap.size
+    self.size = rangemap.size*domainmap.size
     Object.__init__( self, domainmap.comm, handle )
 
   def apply( self, vec ):

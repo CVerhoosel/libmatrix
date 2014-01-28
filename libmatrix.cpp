@@ -495,6 +495,32 @@ private:
     vec->putScalar( value );
   }
   
+  void vector_truncateabove() /* replace values above threshold value
+    
+       -> broadcast HANDLE handle.self
+       -> broadcast SCALAR threshold
+       -> broadcast SCALAR replace
+  */{
+  
+    struct { handle_t self; } handle;
+    bcast( &handle );
+
+    auto self = objects.get<vector_t>( handle.self, out(DEBUG) );
+
+    scalar_t threshold;
+    bcast( &threshold );
+
+    scalar_t replace;
+    bcast( &replace );
+
+    for ( auto &self_i : self->getDataNonConst() ) {
+      if ( self_i > threshold ){
+        self_i = replace;
+      }
+    }
+
+  }
+  
   void vector_dot() /* innerproduct of two vectors
      
        -> broadcast HANDLE handle.{vector1,vector2}
