@@ -667,27 +667,11 @@ class Operator( Object ):
       linprob.set_hermitian()
     if precon:
       if isinstance( precon, str ):
-        precon = Precon( self, precon )
+        precon = self.build_precon( precon )
       linprob.set_precon( precon )
     if not name:
       name = 'CG' if symmetric else 'GMRES'
     return linprob.solve( name=name, tol=tol, **kwargs )
-
-
-class Precon( Operator ):
-
-  def __init__( self, matrix, precontype, fill=5., absthreshold=0., relthreshold=1., relax=0. ):
-    assert isinstance( matrix, Matrix )
-    comm = matrix.comm
-    preconparams = ParameterList( comm, {
-      'fact: %s level-of-fill' % precontype.lower(): float(fill),
-      'fact: absolute threshold': float(absthreshold),
-      'fact: relative threshold': float(relthreshold),
-      'fact: relax value': float(relax),
-    })
-    preconparams.cprint()
-    myhandle = comm.precon_new( matrix.handle, _precons.index(precontype), preconparams.handle )
-    Operator.__init__( self, myhandle, matrix.rangemap, matrix.domainmap )
 
 
 class Matrix( Operator ):
@@ -729,8 +713,15 @@ class Matrix( Operator ):
 
     return Matrix( handle, self.domainmap, self.rangemap )
 
-  def build_precon( self, precontype, **kwargs ):
-    return Precon( self, precontype, **kwargs )
+  def build_precon( self, precontype, fill=5., absthreshold=0., relthreshold=1., relax=0. ):
+    preconparams = ParameterList( self.comm, {
+      'fact: %s level-of-fill' % precontype.lower(): float(fill),
+      'fact: absolute threshold': float(absthreshold),
+      'fact: relative threshold': float(relthreshold),
+      'fact: relax value': float(relax),
+    })
+    myhandle = self.comm.precon_new( self.handle, _precons.index(precontype), preconparams.handle )
+    return Operator( myhandle, self.rangemap, self.domainmap )
 
 
 class MatrixBuilder( Object ):
