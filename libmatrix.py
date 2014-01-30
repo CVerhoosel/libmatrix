@@ -125,6 +125,12 @@ class LibMatrix( InterComm ):
     self.bcast( value, scalar_t )
 
   @bcast_token
+  def vector_truncateabove( self, vector_handle, threshold, replace ):
+    self.bcast( vector_handle, handle_t )
+    self.bcast( threshold, scalar_t )
+    self.bcast( replace  , scalar_t )
+
+  @bcast_token
   def vector_add_block( self, handle, rank, idx, data ):
     n = len(idx)
     assert len(data) == n
@@ -176,6 +182,10 @@ class LibMatrix( InterComm ):
 
   @bcast_token
   def vector_imul( self, self_handle, other_handle ):
+    self.bcast( [ self_handle, other_handle ], handle_t )
+
+  @bcast_token
+  def vector_idiv( self, self_handle, other_handle ):
     self.bcast( [ self_handle, other_handle ], handle_t )
 
   @bcast_token
@@ -231,6 +241,15 @@ class LibMatrix( InterComm ):
     conmat_handle = self.claim_handle()
     self.bcast( [ conmat_handle, matrix_handle, vector_handle ], handle_t )
     return conmat_handle
+
+  @bcast_token
+  def matrix_copy( self, orig_handle, fillComplete, localIndexing, staticProfile ):
+    copy_handle = self.claim_handle()
+    self.bcast( [ copy_handle, orig_handle ], handle_t )
+    self.bcast( fillComplete, bool_t )
+    self.bcast( localIndexing, bool_t )
+    self.bcast( staticProfile, bool_t )
+    return copy_handle
 
   @bcast_token
   def matrix_norm( self, handle ):
@@ -335,7 +354,9 @@ class ParameterList( Object ):
     s = '<ParameterList>\n'
     for key, value in items.items():
       assert isinstance( key, str ), 'parameter keys should be strings'
-      if isinstance( value, int ):
+      if isinstance( value, bool ):  
+        dtype = 'bool'
+      elif isinstance( value, int ):
         dtype = 'int'
       elif isinstance( value, float ):
         dtype = 'double'
@@ -435,6 +456,7 @@ class Vector( Object ):
       handle = map.comm.vector_new( map.handle )
     self.map = map
     self.shape = map.size,
+    self.size = map.size
     Object.__init__( self, map.comm, handle )
 
   def toarray( self ):
@@ -442,6 +464,9 @@ class Vector( Object ):
     array = self.comm.vector_toarray( self.handle )
     assert array.shape == self.shape
     return array
+
+  def __len__ ( self ):
+    return self.shape[0]
 
   def norm( self ):
     return self.comm.vector_norm( self.handle )
@@ -456,6 +481,19 @@ class Vector( Object ):
 
   def fill( self, value ):
     self.comm.vector_fill( self.handle, value )
+
+  def less ( self, other ):
+    if isinstance( other, Vector ):
+      nanvec = self-other
+      other = 0
+    else:
+      nanvec = self.copy()
+    nanvec.truncateabove( threshold=other, replace=numpy.nan )
+    return nanvec
+
+  def truncateabove ( self, threshold, replace=None ):
+    assert isinstance( threshold, (int,float) )
+    self.comm.vector_truncateabove( self.handle, threshold, threshold if replace is None else replace )
 
   def copy( self ):
     handle = self.comm.vector_copy( self.handle )
@@ -515,6 +553,18 @@ class Vector( Object ):
     self.comm.vector_imul( self.handle, other.handle )
     return self
 
+  def __div__( self, other ):
+    return self.copy().__idiv__( other )
+
+  def __rdiv__ ( self, other ):
+    other = self.asme( other, copy=True )
+    return other.__idiv__( self )
+
+  def __idiv__( self, other ):
+    other = self.asme( other )
+    self.comm.vector_idiv( self.handle, other.handle )
+    return self
+
   def asme( self, other, copy=False ):
     if isinstance( other, (int,float,numpy.ndarray) ):
       value = other
@@ -570,6 +620,7 @@ class Operator( Object ):
     self.domainmap = domainmap
     self.rangemap = rangemap
     self.shape = rangemap.size, domainmap.size
+    self.size = rangemap.size*domainmap.size
     Object.__init__( self, domainmap.comm, handle )
 
   def apply( self, vec ):
@@ -609,7 +660,7 @@ class Operator( Object ):
       matrix = self
     return LinearProblem( matrix, rhs, lhs )
 
-  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0 ):
+  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0, **kwargs ):
     assert tol != 0, 'direct solving not implemented yet; please specify a solver tolerance'
     linprob = self.linearproblem( rhs, lhs, constrain )
     if symmetric:
@@ -620,7 +671,7 @@ class Operator( Object ):
       linprob.set_precon( precon )
     if not name:
       name = 'CG' if symmetric else 'GMRES'
-    return linprob.solve( name=name, tol=tol )
+    return linprob.solve( name=name, tol=tol, **kwargs )
 
 
 class Precon( Operator ):
@@ -671,6 +722,12 @@ class Matrix( Operator ):
     array = self.comm.matrix_toarray( self.handle )
     assert array.shape == self.shape
     return array
+
+  def copy( self, fillComplete=True, localIndexing=True, staticProfile=True ):
+
+    handle = self.comm.matrix_copy( self.handle, fillComplete, localIndexing, staticProfile )
+
+    return Matrix( handle, self.domainmap, self.rangemap )
 
   def build_precon( self, precontype, **kwargs ):
     return Precon( self, precontype, **kwargs )
