@@ -854,6 +854,31 @@ private:
   
     objects.set( handle.matrix, matrix, out(DEBUG) );
   }
+
+  void matrix_copy() /* deepcopy of matrix
+
+       -> broadcast HANDLE handle.{copy,orig}
+       -> broadcast BOOL {fillComplete,localIndexing,staticProfile}
+  */{
+
+    struct { handle_t copy, orig; } handle;
+    bcast( &handle );
+    auto orig   = objects.get<crsmatrix_t>( handle.orig, out(DEBUG) );
+
+    bool_t fillComplete, localIndexing, staticProfile;
+    bcast( &fillComplete );
+    bcast( &localIndexing );
+    bcast( &staticProfile );
+
+    auto params = Teuchos::rcp( new params_t );
+    params->set("fillComplete clone",fillComplete);
+    params->set("Locally indexed clone",localIndexing);
+    params->set("Static profile clone",staticProfile);
+
+    auto copy = orig->clone( orig->getNode(), params );
+
+    objects.set( handle.copy, copy, out(DEBUG) );
+  }
   
   void matrix_norm() /* compute frobenius norm
      

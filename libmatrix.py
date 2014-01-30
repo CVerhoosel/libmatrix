@@ -243,6 +243,15 @@ class LibMatrix( InterComm ):
     return conmat_handle
 
   @bcast_token
+  def matrix_copy( self, orig_handle, fillComplete, localIndexing, staticProfile ):
+    copy_handle = self.claim_handle()
+    self.bcast( [ copy_handle, orig_handle ], handle_t )
+    self.bcast( fillComplete, bool_t )
+    self.bcast( localIndexing, bool_t )
+    self.bcast( staticProfile, bool_t )
+    return copy_handle
+
+  @bcast_token
   def matrix_norm( self, handle ):
     self.bcast( handle, handle_t )
     return self.gather_equal( scalar_t )
@@ -345,7 +354,9 @@ class ParameterList( Object ):
     s = '<ParameterList>\n'
     for key, value in items.items():
       assert isinstance( key, str ), 'parameter keys should be strings'
-      if isinstance( value, int ):
+      if isinstance( value, bool ):  
+        dtype = 'bool'
+      elif isinstance( value, int ):
         dtype = 'int'
       elif isinstance( value, float ):
         dtype = 'double'
@@ -649,7 +660,7 @@ class Operator( Object ):
       matrix = self
     return LinearProblem( matrix, rhs, lhs )
 
-  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0 ):
+  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0, **kwargs ):
     assert tol != 0, 'direct solving not implemented yet; please specify a solver tolerance'
     linprob = self.linearproblem( rhs, lhs, constrain )
     if symmetric:
@@ -660,7 +671,7 @@ class Operator( Object ):
       linprob.set_precon( precon )
     if not name:
       name = 'CG' if symmetric else 'GMRES'
-    return linprob.solve( name=name, tol=tol )
+    return linprob.solve( name=name, tol=tol, **kwargs )
 
 
 class Precon( Operator ):
@@ -711,6 +722,12 @@ class Matrix( Operator ):
     array = self.comm.matrix_toarray( self.handle )
     assert array.shape == self.shape
     return array
+
+  def copy( self, fillComplete=True, localIndexing=True, staticProfile=True ):
+
+    handle = self.comm.matrix_copy( self.handle, fillComplete, localIndexing, staticProfile )
+
+    return Matrix( handle, self.domainmap, self.rangemap )
 
   def build_precon( self, precontype, **kwargs ):
     return Precon( self, precontype, **kwargs )
