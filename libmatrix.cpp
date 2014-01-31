@@ -871,11 +871,16 @@ private:
     bcast( &staticProfile );
 
     auto params = Teuchos::rcp( new params_t );
-    params->set("fillComplete clone",fillComplete);
+    params->set("fillComplete clone",false);
     params->set("Locally indexed clone",localIndexing);
     params->set("Static profile clone",staticProfile);
 
     auto copy = orig->clone( orig->getNode(), params );
+
+    //TODO Calling clone with "fillComplete clone = true" fails
+    //due to non-existing domain and range maps in clone.
+    //See Tpetra_CrsMatrix_decl.hpp line 504
+    if( fillComplete ) copy->fillComplete( orig->getDomainMap(), orig->getRangeMap() );
 
     objects.set( handle.copy, copy, out(DEBUG) );
   }
@@ -967,29 +972,44 @@ private:
     gatherv( all_values.get(), all_values.size() );
   }
 
-  void matrix_constrained() /* matrix vector multiplication
+  void matrix_applyconstraints() /* matrix vector multiplication
      
-       -> broadcast HANDLE handle.{conmat,matrix,vector}
+       -> broadcast HANDLE handle.{matrix,vector}
   */{
   
-    struct { handle_t conmat, matrix, vector; } handle;
+    struct { handle_t matrix, vector; } handle;
     bcast( &handle );
   
-    auto matrix = objects.get<const operator_t>( handle.matrix, out(DEBUG) );
-    auto vector = objects.get<const vector_t>( handle.vector, out(DEBUG) );
-    Teuchos::Array<local_t> con_items;
+    auto matrix = objects.get<crsmatrix_t>( handle.matrix, out(DEBUG) );
+    auto vector = objects.get<vector_t>( handle.vector, out(DEBUG) );
+
+    vector_t scalevec ( *vector );
+  
     local_t ldof = 0;
-    for ( auto const &v : vector->getData() ) {
+    for ( auto &v : scalevec.getDataNonConst() ) {
       if ( ! std::isnan( v ) ) {
-        con_items.push_back( ldof );
+        //ldof is constrained
+        v = 0.;
+        std::cout << "Constrained " << ldof << std::endl; 
+      }
+      else
+      {
+        std::cout << "Unconstrained " << ldof << std::endl; 
+        v = 1.;
+        //ldof is not constrained
       }
       ldof++;
     }
 
-    auto comm = Tpetra::DefaultPlatform::getDefaultPlatform().getComm();
-    auto conmat = Teuchos::rcp( new ConstrainedOperator( matrix, con_items ) );
+    std::cout << "Vector norm =" << scalevec.norm2() << std::endl;
 
-    objects.set( handle.conmat, conmat, out(DEBUG) );
+    std::cout << "Matrix norm before =" << matrix->getFrobeniusNorm() << std::endl;
+
+    matrix->leftScale( scalevec ); 
+    matrix->rightScale( scalevec ); 
+
+    std::cout << "Matrix norm after =" << matrix->getFrobeniusNorm() << std::endl;
+
   }
   
   void vector_nan_from_supp() /* set vector items to nan for non suppored rows

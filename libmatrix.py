@@ -237,10 +237,8 @@ class LibMatrix( InterComm ):
     return matrix_handle
 
   @bcast_token
-  def matrix_constrained( self, matrix_handle, vector_handle ):
-    conmat_handle = self.claim_handle()
-    self.bcast( [ conmat_handle, matrix_handle, vector_handle ], handle_t )
-    return conmat_handle
+  def matrix_applyconstraints( self, matrix_handle, vector_handle ):
+    self.bcast( [ matrix_handle, vector_handle ], handle_t )
 
   @bcast_token
   def matrix_copy( self, orig_handle, fillComplete, localIndexing, staticProfile ):
@@ -644,21 +642,22 @@ class Operator( Object ):
       array[:,i] = self.apply( e ).toarray()
     return array
 
-  def constrained( self, selection ):
-    handle = self.comm.matrix_constrained( self.handle, selection.handle )
-    return Operator( handle, self.domainmap, self.rangemap )
+  def applyconstraints( self, selection ):
+    consmat = self.copy()
+    self.comm.matrix_applyconstraints( consmat.handle, selection.handle )
+    return consmat
 
   def linearproblem( self, rhs=0, lhs=None, constrain=None ):
     if constrain:
       assert isinstance( constrain, Vector )
       assert constrain.map == self.domainmap
-      matrix = self.constrained( constrain )
+      consmat = self.applyconstraints( constrain )
       rhs = constrain | ( rhs - self.apply( constrain | 0 ) )
     else:
       if not rhs:
         return Vector( self.domainmap )
-      matrix = self
-    return LinearProblem( matrix, rhs, lhs )
+      consmat = self
+    return LinearProblem( consmat, rhs, lhs )
 
   def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0, **kwargs ):
     assert tol != 0, 'direct solving not implemented yet; please specify a solver tolerance'
@@ -724,9 +723,7 @@ class Matrix( Operator ):
     return array
 
   def copy( self, fillComplete=True, localIndexing=True, staticProfile=True ):
-
     handle = self.comm.matrix_copy( self.handle, fillComplete, localIndexing, staticProfile )
-
     return Matrix( handle, self.domainmap, self.rangemap )
 
   def build_precon( self, precontype, **kwargs ):
