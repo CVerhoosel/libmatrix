@@ -642,36 +642,6 @@ class Operator( Object ):
       array[:,i] = self.apply( e ).toarray()
     return array
 
-  def applyconstraints( self, selection ):
-    consmat = self.copy()
-    self.comm.matrix_applyconstraints( consmat.handle, selection.handle )
-    return consmat
-
-  def linearproblem( self, rhs=0, lhs=None, constrain=None ):
-    if constrain:
-      assert isinstance( constrain, Vector )
-      assert constrain.map == self.domainmap
-      consmat = self.applyconstraints( constrain )
-      rhs = constrain | ( rhs - self.apply( constrain | 0 ) )
-    else:
-      if not rhs:
-        return Vector( self.domainmap )
-      consmat = self
-    return LinearProblem( consmat, rhs, lhs )
-
-  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0, **kwargs ):
-    assert tol != 0, 'direct solving not implemented yet; please specify a solver tolerance'
-    linprob = self.linearproblem( rhs, lhs, constrain )
-    if symmetric:
-      linprob.set_hermitian()
-    if precon:
-      if isinstance( precon, str ):
-        precon = Precon( self, precon )
-      linprob.set_precon( precon )
-    if not name:
-      name = 'CG' if symmetric else 'GMRES'
-    return linprob.solve( name=name, tol=tol, **kwargs )
-
 
 class Precon( Operator ):
 
@@ -725,6 +695,36 @@ class Matrix( Operator ):
   def copy( self, fillComplete=True, localIndexing=True, staticProfile=True ):
     handle = self.comm.matrix_copy( self.handle, fillComplete, localIndexing, staticProfile )
     return Matrix( handle, self.domainmap, self.rangemap )
+
+  def applyconstraints( self, selection ):
+    consmat = self.copy()
+    self.comm.matrix_applyconstraints( consmat.handle, selection.handle )
+    return consmat
+
+  def linearproblem( self, rhs=0, lhs=None, constrain=None ):
+    if constrain:
+      assert isinstance( constrain, Vector )
+      assert constrain.map == self.domainmap
+      consmat = self.applyconstraints( constrain )
+      rhs = constrain | ( rhs - self.apply( constrain | 0 ) )
+    else:
+      if not rhs:
+        return Vector( self.domainmap )
+      consmat = self
+    return LinearProblem( consmat, rhs, lhs )
+
+  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0, **kwargs ):
+    assert tol != 0, 'direct solving not implemented yet; please specify a solver tolerance'
+    linprob = self.linearproblem( rhs, lhs, constrain )
+    if symmetric:
+      linprob.set_hermitian()
+    if precon:
+      if isinstance( precon, str ):
+        precon = Precon( self, precon )
+      linprob.set_precon( precon )
+    if not name:
+      name = 'CG' if symmetric else 'GMRES'
+    return linprob.solve( name=name, tol=tol, **kwargs )
 
   def build_precon( self, precontype, **kwargs ):
     return Precon( self, precontype, **kwargs )

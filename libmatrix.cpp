@@ -863,26 +863,29 @@ private:
 
     struct { handle_t copy, orig; } handle;
     bcast( &handle );
-    auto orig   = objects.get<crsmatrix_t>( handle.orig, out(DEBUG) );
+    auto orig = objects.get<const rowmatrix_t>( handle.orig, out(DEBUG) );
 
     bool_t fillComplete, localIndexing, staticProfile;
     bcast( &fillComplete );
     bcast( &localIndexing );
     bcast( &staticProfile );
 
-    auto params = Teuchos::rcp( new params_t );
-    params->set("fillComplete clone",false);
-    params->set("Locally indexed clone",localIndexing);
-    params->set("Static profile clone",staticProfile);
-
-    auto copy = orig->clone( orig->getNode(), params );
-
-    //TODO Calling clone with "fillComplete clone = true" fails
-    //due to non-existing domain and range maps in clone.
-    //See Tpetra_CrsMatrix_decl.hpp line 504
-    if( fillComplete ) copy->fillComplete( orig->getDomainMap(), orig->getRangeMap() );
+    auto copy = orig->add( 1., *orig, 0. );
 
     objects.set( handle.copy, copy, out(DEBUG) );
+
+    // auto params = Teuchos::rcp( new params_t );
+    // params->set("fillComplete clone",false);
+    // params->set("Locally indexed clone",localIndexing);
+    // params->set("Static profile clone",staticProfile);
+
+    // auto copy = orig->clone( orig->getNode(), params );
+
+    // //TODO Calling clone with "fillComplete clone = true" fails
+    // //due to non-existing domain and range maps in clone.
+    // //See Tpetra_CrsMatrix_decl.hpp line 504
+    // if( fillComplete ) copy->fillComplete( orig->getDomainMap(), orig->getRangeMap() );
+
   }
   
   void matrix_norm() /* compute frobenius norm
@@ -1007,6 +1010,18 @@ private:
 
     matrix->leftScale( scalevec ); 
     matrix->rightScale( scalevec ); 
+
+    //vector_t diagvec ( * vector );
+    //matrix->getLocalDiagCopy( diagvec );
+    //for ( auto &v : diagvec.getDataNonConst() ) {
+    //  v = 42.;
+    //}
+
+
+
+    //This is here only to reset the cache of the frobNorm
+    matrix->resumeFill();
+    matrix->fillComplete();
 
     std::cout << "Matrix norm after =" << matrix->getFrobeniusNorm() << std::endl;
 

@@ -98,9 +98,12 @@ def test( nprocs, size ):
 
   print cons.toarray()
 
-  A.applyconstraints( cons )
+  Acons = A.applyconstraints( cons )
 
-  print A.toarray()
+  print 'Constrained matrix ='
+  print Acons.toarray()
+  print 'libmatrix norm:', Acons.norm()
+  print 'reconstructed norm:', numpy.sqrt( ( Acons.toarray()**2 ).sum() )
 
   return
 
