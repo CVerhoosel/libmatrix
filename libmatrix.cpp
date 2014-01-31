@@ -987,43 +987,18 @@ private:
     auto vector = objects.get<vector_t>( handle.vector, out(DEBUG) );
 
     vector_t scalevec ( *vector );
-  
-    local_t ldof = 0;
     for ( auto &v : scalevec.getDataNonConst() ) {
       if ( ! std::isnan( v ) ) {
-        //ldof is constrained
         v = 0.;
-        std::cout << "Constrained " << ldof << std::endl; 
       }
       else
       {
-        std::cout << "Unconstrained " << ldof << std::endl; 
         v = 1.;
-        //ldof is not constrained
       }
-      ldof++;
     }
-
-    std::cout << "Vector norm =" << scalevec.norm2() << std::endl;
-
-    std::cout << "Matrix norm before =" << matrix->getFrobeniusNorm() << std::endl;
 
     matrix->leftScale( scalevec ); 
     matrix->rightScale( scalevec ); 
-
-    //vector_t diagvec ( * vector );
-    //matrix->getLocalDiagCopy( diagvec );
-    //for ( auto &v : diagvec.getDataNonConst() ) {
-    //  v = 42.;
-    //}
-
-
-
-    //This is here only to reset the cache of the frobNorm
-    matrix->resumeFill();
-    matrix->fillComplete();
-
-    std::cout << "Matrix norm after =" << matrix->getFrobeniusNorm() << std::endl;
 
   }
   
