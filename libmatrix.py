@@ -642,22 +642,32 @@ class Operator( Object ):
       array[:,i] = self.apply( e ).toarray()
     return array
 
+  def constrained( self, selection ):
+    handle = self.comm.matrix_constrained( self.handle, selection.handle )
+    return Operator( handle, self.domainmap, self.rangemap )
 
-class Precon( Operator ):
+  def linearproblem( self, rhs=0, lhs=None, constrain=None ):
+    if constrain:
+      assert isinstance( constrain, Vector )
+      assert constrain.map == self.domainmap
+      consmat = self.constrained( constrain )
+      rhs = constrain | ( rhs - self.apply( constrain | 0 ) )
+    else:
+      if not rhs:
+        return Vector( self.domainmap )
+      consmat = self
+    return LinearProblem( consmat, rhs, lhs )
 
-  def __init__( self, matrix, precontype, fill=5., absthreshold=0., relthreshold=1., relax=0. ):
-    assert isinstance( matrix, Matrix )
-    comm = matrix.comm
-    preconparams = ParameterList( comm, {
-      'fact: %s level-of-fill' % precontype.lower(): float(fill),
-      'fact: absolute threshold': float(absthreshold),
-      'fact: relative threshold': float(relthreshold),
-      'fact: relax value': float(relax),
-    })
-    preconparams.cprint()
-    myhandle = comm.precon_new( matrix.handle, _precons.index(precontype), preconparams.handle )
-    Operator.__init__( self, myhandle, matrix.rangemap, matrix.domainmap )
-
+  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0, **kwargs ):
+    assert tol != 0, 'direct solving not implemented yet; please specify a solver tolerance'
+    linprob = self.linearproblem( rhs, lhs, constrain )
+    if symmetric:
+      linprob.set_hermitian()
+    if precon:
+      linprob.set_precon( precon )
+    if not name:
+      name = 'CG' if symmetric else 'GMRES'
+    return linprob.solve( name=name, tol=tol, **kwargs )
 
 class Matrix( Operator ):
 
@@ -701,31 +711,15 @@ class Matrix( Operator ):
     self.comm.matrix_applyconstraints( consmat.handle, selection.handle )
     return consmat
 
-  def linearproblem( self, rhs=0, lhs=None, constrain=None ):
-    if constrain:
-      assert isinstance( constrain, Vector )
-      assert constrain.map == self.domainmap
-      consmat = self.constrained( constrain )
-      rhs = constrain | ( rhs - self.apply( constrain | 0 ) )
-    else:
-      if not rhs:
-        return Vector( self.domainmap )
-      consmat = self
-    return LinearProblem( consmat, rhs, lhs )
-
-  def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0, **kwargs ):
-    assert tol != 0, 'direct solving not implemented yet; please specify a solver tolerance'
-    linprob = self.linearproblem( rhs, lhs, constrain )
-    if symmetric:
-      linprob.set_hermitian()
-    if precon:
-      linprob.set_precon( precon )
-    if not name:
-      name = 'CG' if symmetric else 'GMRES'
-    return linprob.solve( name=name, tol=tol, **kwargs )
-
-  def build_precon( self, precontype, **kwargs ):
-    return Precon( self, precontype, **kwargs )
+  def build_precon( self, precontype, fill=5., absthreshold=0., relthreshold=1., relax=0. ):
+    preconparams = ParameterList( self.comm, {
+      'fact: %s level-of-fill' % precontype.lower(): float(fill),
+      'fact: absolute threshold': float(absthreshold),
+      'fact: relative threshold': float(relthreshold),
+      'fact: relax value': float(relax),
+    })
+    myhandle = self.comm.precon_new( self.handle, _precons.index(precontype), preconparams.handle )
+    return Operator( myhandle, self.rangemap, self.domainmap )
 
 
 class MatrixBuilder( Object ):
