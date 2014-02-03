@@ -1000,6 +1000,53 @@ private:
     matrix->leftScale( scalevec ); 
     matrix->rightScale( scalevec ); 
 
+    //Adding ones to diagonal
+    matrix->resumeFill();
+
+    local_t irow;
+    scalar_t one = 1.;
+    Teuchos::ArrayView<const local_t> diagindex ( &irow, 1 );
+    Teuchos::ArrayView<const scalar_t> diagvalue ( &one, 1 );
+
+    for( irow = 0 ; irow < matrix->getNodeNumRows() ; irow++ )
+    {
+      if( !std::isnan( vector->getData()[irow] ) )
+      {
+        matrix->replaceLocalValues( irow,  diagindex, diagvalue );
+      }
+    }
+
+    matrix->expertStaticFillComplete( matrix->getDomainMap(), matrix->getRangeMap() );
+
+
+
+    //auto mat = objects.get<crsmatrix_t>( handle.matrix, out(DEBUG) );
+    //auto graph = mat->getCrsGraph();
+  
+    //Teuchos::ArrayView<const local_t> current_icols;
+    //Teuchos::ArrayRCP<local_t> this_colidx( nitems[1] );
+    //Teuchos::ArrayRCP<scalar_t> this_data( nitems[1] );
+    //auto value = data.begin();
+    //for ( auto const &irow : rowidx ) {
+    //  int nnew = 0, nold = 0;
+    //  graph->getLocalRowView( irow, current_icols );
+    //  for ( auto const &icol : colidx ) {
+    //    if ( *value != 0 ) {
+    //      int i = contains( current_icols, icol ) ? (nold++) : nitems[1] - (++nnew);
+    //      this_colidx[i] = icol;
+    //      this_data[i] = *value;
+    //    }
+    //    value++;
+    //  }
+    //  if ( nnew > 0 ) {
+    //    out(INFO) << "inserting " << nnew << " new items in row " << irow << std::endl;
+    //    mat->insertLocalValues( irow, this_colidx.view(nitems[1]-nnew,nnew), this_data.view(nitems[1]-nnew,nnew) );
+    //  }
+    //  if ( nold > 0 ) {
+    //    out(INFO) << "adding " << nold << " existing items in row " << irow << std::endl;
+    //    mat->sumIntoLocalValues( irow, this_colidx.view(0,nold), this_data.view(0,nold) );
+    //  }
+    //}
   }
   
   void vector_nan_from_supp() /* set vector items to nan for non suppored rows

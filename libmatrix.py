@@ -696,7 +696,7 @@ class Matrix( Operator ):
     handle = self.comm.matrix_copy( self.handle, fillComplete, localIndexing, staticProfile )
     return Matrix( handle, self.domainmap, self.rangemap )
 
-  def applyconstraints( self, selection ):
+  def constrained( self, selection ):
     consmat = self.copy()
     self.comm.matrix_applyconstraints( consmat.handle, selection.handle )
     return consmat
@@ -705,7 +705,7 @@ class Matrix( Operator ):
     if constrain:
       assert isinstance( constrain, Vector )
       assert constrain.map == self.domainmap
-      consmat = self.applyconstraints( constrain )
+      consmat = self.constrained( constrain )
       rhs = constrain | ( rhs - self.apply( constrain | 0 ) )
     else:
       if not rhs:
@@ -719,8 +719,6 @@ class Matrix( Operator ):
     if symmetric:
       linprob.set_hermitian()
     if precon:
-      if isinstance( precon, str ):
-        precon = Precon( self, precon )
       linprob.set_precon( precon )
     if not name:
       name = 'CG' if symmetric else 'GMRES'
@@ -797,6 +795,8 @@ class LinearProblem( Object ):
     self.comm.linearproblem_set_hermitian( self.handle )
 
   def set_precon( self, precon, right=False ):
+    if isinstance( precon, str ):
+      precon = self.matrix.build_precon( precon )
     assert isinstance( precon, Operator )
     assert precon.shape == self.matrix.shape
     self.comm.linearproblem_set_precon( self.handle, precon.handle, right )
