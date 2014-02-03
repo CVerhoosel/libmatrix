@@ -237,10 +237,8 @@ class LibMatrix( InterComm ):
     return matrix_handle
 
   @bcast_token
-  def matrix_constrained( self, matrix_handle, vector_handle ):
-    conmat_handle = self.claim_handle()
-    self.bcast( [ conmat_handle, matrix_handle, vector_handle ], handle_t )
-    return conmat_handle
+  def matrix_applyconstraints( self, matrix_handle, vector_handle ):
+    self.bcast( [ matrix_handle, vector_handle ], handle_t )
 
   @bcast_token
   def matrix_copy( self, orig_handle, fillComplete, localIndexing, staticProfile ):
@@ -652,13 +650,13 @@ class Operator( Object ):
     if constrain:
       assert isinstance( constrain, Vector )
       assert constrain.map == self.domainmap
-      matrix = self.constrained( constrain )
+      consmat = self.constrained( constrain )
       rhs = constrain | ( rhs - self.apply( constrain | 0 ) )
     else:
       if not rhs:
         return Vector( self.domainmap )
-      matrix = self
-    return LinearProblem( matrix, rhs, lhs )
+      consmat = self
+    return LinearProblem( consmat, rhs, lhs )
 
   def solve( self, rhs=0, lhs=None, constrain=None, precon=None, name=None, symmetric=False, tol=0, **kwargs ):
     assert tol != 0, 'direct solving not implemented yet; please specify a solver tolerance'
@@ -666,13 +664,10 @@ class Operator( Object ):
     if symmetric:
       linprob.set_hermitian()
     if precon:
-      if isinstance( precon, str ):
-        precon = self.build_precon( precon )
       linprob.set_precon( precon )
     if not name:
       name = 'CG' if symmetric else 'GMRES'
     return linprob.solve( name=name, tol=tol, **kwargs )
-
 
 class Matrix( Operator ):
 
@@ -708,10 +703,13 @@ class Matrix( Operator ):
     return array
 
   def copy( self, fillComplete=True, localIndexing=True, staticProfile=True ):
-
     handle = self.comm.matrix_copy( self.handle, fillComplete, localIndexing, staticProfile )
-
     return Matrix( handle, self.domainmap, self.rangemap )
+
+  def constrained( self, selection ):
+    consmat = self.copy()
+    self.comm.matrix_applyconstraints( consmat.handle, selection.handle )
+    return consmat
 
   def build_precon( self, precontype, fill=5., absthreshold=0., relthreshold=1., relax=0. ):
     preconparams = ParameterList( self.comm, {
@@ -791,6 +789,8 @@ class LinearProblem( Object ):
     self.comm.linearproblem_set_hermitian( self.handle )
 
   def set_precon( self, precon, right=False ):
+    if isinstance( precon, str ):
+      precon = self.matrix.build_precon( precon )
     assert isinstance( precon, Operator )
     assert precon.shape == self.matrix.shape
     self.comm.linearproblem_set_precon( self.handle, precon.handle, right )

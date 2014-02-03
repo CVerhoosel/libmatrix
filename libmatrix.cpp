@@ -863,21 +863,29 @@ private:
 
     struct { handle_t copy, orig; } handle;
     bcast( &handle );
-    auto orig   = objects.get<crsmatrix_t>( handle.orig, out(DEBUG) );
+    auto orig = objects.get<const rowmatrix_t>( handle.orig, out(DEBUG) );
 
     bool_t fillComplete, localIndexing, staticProfile;
     bcast( &fillComplete );
     bcast( &localIndexing );
     bcast( &staticProfile );
 
-    auto params = Teuchos::rcp( new params_t );
-    params->set("fillComplete clone",fillComplete);
-    params->set("Locally indexed clone",localIndexing);
-    params->set("Static profile clone",staticProfile);
-
-    auto copy = orig->clone( orig->getNode(), params );
+    auto copy = orig->add( 1., *orig, 0. );
 
     objects.set( handle.copy, copy, out(DEBUG) );
+
+    // auto params = Teuchos::rcp( new params_t );
+    // params->set("fillComplete clone",false);
+    // params->set("Locally indexed clone",localIndexing);
+    // params->set("Static profile clone",staticProfile);
+
+    // auto copy = orig->clone( orig->getNode(), params );
+
+    // //TODO Calling clone with "fillComplete clone = true" fails
+    // //due to non-existing domain and range maps in clone.
+    // //See Tpetra_CrsMatrix_decl.hpp line 504
+    // if( fillComplete ) copy->fillComplete( orig->getDomainMap(), orig->getRangeMap() );
+
   }
   
   void matrix_norm() /* compute frobenius norm
@@ -967,29 +975,78 @@ private:
     gatherv( all_values.get(), all_values.size() );
   }
 
-  void matrix_constrained() /* matrix vector multiplication
+  void matrix_applyconstraints() /* matrix vector multiplication
      
-       -> broadcast HANDLE handle.{conmat,matrix,vector}
+       -> broadcast HANDLE handle.{matrix,vector}
   */{
   
-    struct { handle_t conmat, matrix, vector; } handle;
+    struct { handle_t matrix, vector; } handle;
     bcast( &handle );
   
-    auto matrix = objects.get<const operator_t>( handle.matrix, out(DEBUG) );
-    auto vector = objects.get<const vector_t>( handle.vector, out(DEBUG) );
-    Teuchos::Array<local_t> con_items;
-    local_t ldof = 0;
-    for ( auto const &v : vector->getData() ) {
+    auto matrix = objects.get<crsmatrix_t>( handle.matrix, out(DEBUG) );
+    auto vector = objects.get<vector_t>( handle.vector, out(DEBUG) );
+
+    vector_t scalevec ( *vector );
+    for ( auto &v : scalevec.getDataNonConst() ) {
       if ( ! std::isnan( v ) ) {
-        con_items.push_back( ldof );
+        v = 0.;
       }
-      ldof++;
+      else
+      {
+        v = 1.;
+      }
     }
 
-    auto comm = Tpetra::DefaultPlatform::getDefaultPlatform().getComm();
-    auto conmat = Teuchos::rcp( new ConstrainedOperator( matrix, con_items ) );
+    matrix->leftScale( scalevec ); 
+    matrix->rightScale( scalevec ); 
 
-    objects.set( handle.conmat, conmat, out(DEBUG) );
+    //Adding ones to diagonal
+    matrix->resumeFill();
+
+    local_t irow;
+    scalar_t one = 1.;
+    Teuchos::ArrayView<const local_t> diagindex ( &irow, 1 );
+    Teuchos::ArrayView<const scalar_t> diagvalue ( &one, 1 );
+
+    for( irow = 0 ; irow < matrix->getNodeNumRows() ; irow++ )
+    {
+      if( !std::isnan( vector->getData()[irow] ) )
+      {
+        matrix->replaceLocalValues( irow,  diagindex, diagvalue );
+      }
+    }
+
+    matrix->expertStaticFillComplete( matrix->getDomainMap(), matrix->getRangeMap() );
+
+
+
+    //auto mat = objects.get<crsmatrix_t>( handle.matrix, out(DEBUG) );
+    //auto graph = mat->getCrsGraph();
+  
+    //Teuchos::ArrayView<const local_t> current_icols;
+    //Teuchos::ArrayRCP<local_t> this_colidx( nitems[1] );
+    //Teuchos::ArrayRCP<scalar_t> this_data( nitems[1] );
+    //auto value = data.begin();
+    //for ( auto const &irow : rowidx ) {
+    //  int nnew = 0, nold = 0;
+    //  graph->getLocalRowView( irow, current_icols );
+    //  for ( auto const &icol : colidx ) {
+    //    if ( *value != 0 ) {
+    //      int i = contains( current_icols, icol ) ? (nold++) : nitems[1] - (++nnew);
+    //      this_colidx[i] = icol;
+    //      this_data[i] = *value;
+    //    }
+    //    value++;
+    //  }
+    //  if ( nnew > 0 ) {
+    //    out(INFO) << "inserting " << nnew << " new items in row " << irow << std::endl;
+    //    mat->insertLocalValues( irow, this_colidx.view(nitems[1]-nnew,nnew), this_data.view(nitems[1]-nnew,nnew) );
+    //  }
+    //  if ( nold > 0 ) {
+    //    out(INFO) << "adding " << nold << " existing items in row " << irow << std::endl;
+    //    mat->sumIntoLocalValues( irow, this_colidx.view(0,nold), this_data.view(0,nold) );
+    //  }
+    //}
   }
   
   void vector_nan_from_supp() /* set vector items to nan for non suppored rows
