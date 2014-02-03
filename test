@@ -92,12 +92,6 @@ def test( nprocs, size ):
   cons = AA.solve( rhs, symmetric=True, tol=1e-10 )
   cons.nan_from_supp( AA )
 
-  Acopy = A.copy()
-  print 'Norm A-A.copy()=', (A-Acopy).norm()
-  assert (A-Acopy).norm() < numpy.spacing(1)
-
-  print cons.toarray()
-
   Acons = A.constrained( cons )
 
   print 'Constrained matrix ='

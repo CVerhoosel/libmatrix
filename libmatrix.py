@@ -237,17 +237,16 @@ class LibMatrix( InterComm ):
     return matrix_handle
 
   @bcast_token
-  def matrix_applyconstraints( self, matrix_handle, vector_handle ):
-    self.bcast( [ matrix_handle, vector_handle ], handle_t )
+  def operator_constrained( self, matrix_handle, vector_handle ):
+    constrained_handle = self.claim_handle()
+    self.bcast( [ constrained_handle, matrix_handle, vector_handle ], handle_t )
+    return constrained_handle
 
   @bcast_token
-  def matrix_copy( self, orig_handle, fillComplete, localIndexing, staticProfile ):
-    copy_handle = self.claim_handle()
-    self.bcast( [ copy_handle, orig_handle ], handle_t )
-    self.bcast( fillComplete, bool_t )
-    self.bcast( localIndexing, bool_t )
-    self.bcast( staticProfile, bool_t )
-    return copy_handle
+  def matrix_constrained( self, matrix_handle, vector_handle ):
+    constrained_handle = self.claim_handle()
+    self.bcast( [ constrained_handle, matrix_handle, vector_handle ], handle_t )
+    return constrained_handle
 
   @bcast_token
   def matrix_norm( self, handle ):
@@ -643,7 +642,7 @@ class Operator( Object ):
     return array
 
   def constrained( self, selection ):
-    handle = self.comm.matrix_constrained( self.handle, selection.handle )
+    handle = self.comm.operator_constrained( self.handle, selection.handle )
     return Operator( handle, self.domainmap, self.rangemap )
 
   def linearproblem( self, rhs=0, lhs=None, constrain=None ):
@@ -702,14 +701,9 @@ class Matrix( Operator ):
     assert array.shape == self.shape
     return array
 
-  def copy( self, fillComplete=True, localIndexing=True, staticProfile=True ):
-    handle = self.comm.matrix_copy( self.handle, fillComplete, localIndexing, staticProfile )
-    return Matrix( handle, self.domainmap, self.rangemap )
-
   def constrained( self, selection ):
-    consmat = self.copy()
-    self.comm.matrix_applyconstraints( consmat.handle, selection.handle )
-    return consmat
+    handle = self.comm.matrix_constrained( self.handle, selection.handle )
+    return Matrix( handle, self.domainmap, self.rangemap )
 
   def build_precon( self, precontype, fill=5., absthreshold=0., relthreshold=1., relax=0. ):
     preconparams = ParameterList( self.comm, {
