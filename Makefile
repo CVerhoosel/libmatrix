@@ -45,7 +45,7 @@ clean:
 	rm -f libmatrix.mpi *.pyc
 
 test: libmatrix.mpi
-	python test
+	python test.py
 
 .PHONY: default clean test
 	

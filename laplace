@@ -11,6 +11,7 @@ def test( nprocs, size ):
   print 'row dof assignments:'
   bounds = ( (size-1) * numpy.arange( nprocs+1, dtype=float ) / nprocs ).astype( int )
   rowdofmap = map( numpy.arange, bounds[:-1], bounds[1:]+1 )
+  print rowdofmap
   for iproc, dofs in enumerate( rowdofmap ):
     print '  proc %d:' % iproc, dofs
 
