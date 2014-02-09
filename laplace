@@ -11,6 +11,7 @@ def test( nprocs, size ):
   print 'row dof assignments:'
   bounds = ( (size-1) * numpy.arange( nprocs+1, dtype=float ) / nprocs ).astype( int )
   rowdofmap = map( numpy.arange, bounds[:-1], bounds[1:]+1 )
+  print rowdofmap
   for iproc, dofs in enumerate( rowdofmap ):
     print '  proc %d:' % iproc, dofs
 
@@ -91,12 +92,6 @@ def test( nprocs, size ):
 
   cons = AA.solve( rhs, symmetric=True, tol=1e-10 )
   cons.nan_from_supp( AA )
-
-  Acopy = A.copy()
-  print 'Norm A-A.copy()=', (A-Acopy).norm()
-  assert (A-Acopy).norm() < numpy.spacing(1)
-
-  print cons.toarray()
 
   Acons = A.constrained( cons )
 
