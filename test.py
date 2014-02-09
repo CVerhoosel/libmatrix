@@ -87,11 +87,16 @@ def solve_laplace(comm):
     idx = numpy.arange(i,i+2)
     v.add_global( idx=[idx], data=block )
   v = v.complete()
-  numpy.testing.assert_almost_equal( v.sum(), 1., err_msg='Integrated source term' )
   v_npy =h* numpy.ones(ndofs)
   v_npy[0] /= 2
   v_npy[-1] /= 2
   numpy.testing.assert_almost_equal( v.toarray(), v_npy )
+
+  #Vector operations
+  vnorm_npy = numpy.sqrt((v_npy**2).sum())
+  numpy.testing.assert_almost_equal( v.sum(), 1., err_msg='Vector sum' )
+  numpy.testing.assert_almost_equal( v.norm(), vnorm_npy, err_msg='Vector norm' )
+  numpy.testing.assert_almost_equal( v.dot(v), vnorm_npy**2, err_msg='Vector dot product' )
 
   #Building the matrix
   block = (1./h)*numpy.array([[1,-1],[-1,1]])
