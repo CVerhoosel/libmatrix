@@ -571,7 +571,7 @@ class Vector( Object ):
     elif copy:
       other = other.copy()
     assert isinstance( other, Vector )
-    assert other.map == self.map
+    assert other.map == self.map, 'Map of other does not match that of self'
     return other
 
   def nan_from_supp( self, matrix ):
