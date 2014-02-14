@@ -185,7 +185,7 @@ def solve_laplace(comm):
   u = -(1/2)*x^2+(1/2)*x+1 
   '''
 
-  nelems = 15
+  nelems = 25
   ndofs  = nelems+1
   h      = 1./nelems
 
@@ -248,7 +248,7 @@ def solve_laplace(comm):
   vc_npy[1]  = h+1./h
   vc_npy[-2] = h+1./h
   numpy.testing.assert_almost_equal( vc.toarray(), vc_npy )
-  
+
   #Solve the system using numpy
   x_npy = numpy.linalg.solve(Ac_npy,vc_npy)
   x_ex  = [-(1./2.)*c**2+(1./2.)*c+1. for c in numpy.linspace(0,1,ndofs)]
