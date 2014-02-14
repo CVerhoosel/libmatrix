@@ -381,7 +381,7 @@ class ParameterList( Object ):
 
 class Map( Object ):
 
-  def __init__( self, comm, used, size=None ):
+  def __init__( self, comm, used, size=None, ownedmap=None ):
     if isinstance( used, numpy.ndarray ) and used.dtype == bool:
       assert used.ndim == 2
       assert used.shape[0] == comm.nprocs
@@ -389,26 +389,43 @@ class Map( Object ):
         assert used.shape[1] == size
       else:
         size = used.shape[1]
+      if ownedmap:
+        assert ownedmap.used.shape[1] == size
       used = used.copy()
     else:
       indices = used
       assert len(indices) == comm.nprocs
+      if ownedmap:
+        assert size is None or size == ownedmap.used.shape[1]
+        size = ownedmap.used.shape[1]
       assert size is not None
       used = numpy.zeros( [ comm.nprocs, size ], dtype=bool )
       for iproc, idx in enumerate( indices ):
         used[ iproc, idx ] = True
 
     self.used = used
-    self.owned = self.__distribute( used )
+
+    if not ownedmap:
+      owned = self.__distribute( used )
+    else:
+      assert ownedmap.is1to1
+      owned = ownedmap.used
+
     self.local2global = []
     self.is1to1 = True
-    for x, y in zip( self.owned, used & ~self.owned ):
+    for x, y in zip( owned, used & ~owned ):
       x = where( x )
       y = where( y )
       if y.size:
         x = numpy.concatenate([ x, y ])
         self.is1to1 = False
       self.local2global.append( x )
+
+    if self.is1to1:
+      self.ownedmap = self
+    else:  
+      self.ownedmap = Map( comm, owned )
+      assert self.ownedmap.is1to1
 
     self.size = size
     Object.__init__( self, comm, comm.map_new( self.local2global ) )
@@ -433,17 +450,8 @@ class Map( Object ):
     return global2local
 
   @cacheprop
-  def ownedmap( self ):
-    if self.is1to1:
-      return self
-    ownedmap = Map( self.comm, self.owned )
-    assert ownedmap.is1to1
-    return ownedmap
-
-  @cacheprop
   def export( self ):
     return Export( self, self.ownedmap )
-
 
 class Vector( Object ):
 
@@ -571,7 +579,7 @@ class Vector( Object ):
     elif copy:
       other = other.copy()
     assert isinstance( other, Vector )
-    assert other.map == self.map
+    assert other.map == self.map, 'Map of other does not match that of self'
     return other
 
   def nan_from_supp( self, matrix ):

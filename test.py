@@ -63,6 +63,119 @@ def create_overlapping_rowmap():
   rowmap = libmatrix.Map( comm, rowdofmap, 10 )
 
 @unittest
+@withcomm()
+def distributed_vector(comm):
+  '''
+  Create a uncompletely filled vector "v" with entries i^2 if i is odd and 0 otherwise
+  and a vector "w" with all entries equal to i
+  '''
+
+  ndofs  = 20
+
+  bounds = ( (ndofs-1) * numpy.arange( comm.nprocs+1, dtype=float ) / comm.nprocs ).astype( int )
+  rowdofmap = map( numpy.arange, bounds[:-1], bounds[1:]+1 )
+  rowmap = libmatrix.Map( comm, rowdofmap, ndofs )
+
+  v   = libmatrix.VectorBuilder( rowmap )
+  for idx in range(1,ndofs+1,2):
+    v.add_global( idx=[numpy.array([idx])], data=[numpy.array([idx**2],dtype=float)] )
+  v = v.complete()
+  
+  v_npy = numpy.arange(0,ndofs,dtype=float)**2
+  v_npy[0::2] = 0. 
+
+  numpy.testing.assert_almost_equal( v.toarray(), v_npy, err_msg='Vector "v" was not filled correctly' )
+
+  #Test operations on v
+  numpy.testing.assert_almost_equal( v.sum(), v_npy.sum(), err_msg='Vector sum incorrect' )
+  numpy.testing.assert_almost_equal( v.norm(), numpy.linalg.norm(v_npy), err_msg='Vector norm incorrect' )
+  numpy.testing.assert_almost_equal( v.copy().toarray(), v_npy, err_msg='Vector copy incorrect' )
+  numpy.testing.assert_almost_equal( v.dot(v), (v_npy**2).sum(), err_msg='Vector dot-product with self incorrect' )
+  numpy.testing.assert_almost_equal( (v+1).toarray(), v_npy+1, err_msg='Scalar addition not computed correctly' )
+  numpy.testing.assert_almost_equal( (v-1).toarray(), v_npy-1, err_msg='Scalar subtraction not computed correctly' )
+  numpy.testing.assert_almost_equal( (2.*v).toarray(), 2.*v_npy, err_msg='Scalar multiplication not computed correctly' )
+  numpy.testing.assert_almost_equal( (v*2.).toarray(), 2.*v_npy, err_msg='Scalar multiplication not computed correctly' )
+  numpy.testing.assert_almost_equal( (v/2.).toarray(), v_npy/2., err_msg='Scalar division not computed correctly' )
+  numpy.testing.assert_almost_equal( (2./(v+1.)).toarray(), 2./(v_npy+1.), err_msg='Scalar division not computed correctly' )
+
+  #Create the vector w based on the reversed rowdofmap
+  w = libmatrix.VectorBuilder( rowmap )
+  for idx in rowdofmap:
+    w.add_global( idx=[idx], data=idx.astype(float)/numpy.bincount(numpy.concatenate(rowdofmap))[idx] )
+  w = w.complete()
+
+  w_npy = numpy.arange(ndofs)
+
+  numpy.testing.assert_almost_equal( w.toarray(), w_npy, err_msg='Vector "w" was not filled correctly' )
+
+  #Test binary operations on v and w
+  numpy.testing.assert_almost_equal( v.dot(w), (w_npy*v_npy).sum(), err_msg='Innerproduct of "v" and "w" not computed correctly' )
+  numpy.testing.assert_almost_equal( w.dot(v), (w_npy*v_npy).sum(), err_msg='Innerproduct of "w" and "v" not computed correctly' )
+  numpy.testing.assert_almost_equal( (w-v).toarray(), w_npy-v_npy, err_msg='Substraction of "w" and "v" not computed correctly' )
+  numpy.testing.assert_almost_equal( (w+v).toarray(), w_npy+v_npy, err_msg='Addition of "w" and "v" not computed correctly' )
+  numpy.testing.assert_almost_equal( (w*v).toarray(), w_npy*v_npy, err_msg='Multiplication of "w" and "v" not computed correctly' )
+  numpy.testing.assert_almost_equal( (w/(v+1.)).toarray(), w_npy/(v_npy+1.), err_msg='Division of "w" and "v" not computed correctly' )
+
+@unittest
+@withcomm(2)
+def distributed_matrix(comm):
+  '''
+  Create the Rutishausser (default Toeppen) matrix from the Matlab gallery 
+  '''
+
+  ndofs  = 20
+
+  coeffs = numpy.array([1.,-10,0.,10.,1.])
+  A_npy  = sum([numpy.diag(coeffs[i]*numpy.ones(ndofs-abs(i-2)),k=-2+i) for i in range(5)])
+
+  #Create overlapping row map
+  bounds = ( (ndofs-1) * numpy.arange( comm.nprocs+1, dtype=float ) / comm.nprocs ).astype( int )
+  rowdofmap = map( numpy.arange, bounds[:-1], bounds[1:]+1 )
+  rowmap = libmatrix.Map( comm, rowdofmap, ndofs )
+
+  #Create overlapping column map
+  coldofmap = map( numpy.arange, numpy.maximum(bounds[:-1]-2,0), numpy.minimum(bounds[1:]+3,ndofs) )
+  colmap = libmatrix.Map( comm, coldofmap, ownedmap=rowmap.ownedmap )
+
+  #Initialize the matrix builder
+  A = libmatrix.MatrixBuilder( (rowmap,colmap) )
+
+  #Assemble the matrix
+  block = coeffs[numpy.newaxis]
+  for i in range(ndofs): 
+    idx = numpy.arange(i-2,i+3)
+    sel = numpy.greater(idx,-1)&numpy.less(idx,ndofs)
+    A.add_global( idx=[[i],idx[sel]], data=block[:,sel] )
+  A = A.complete()   
+
+  numpy.testing.assert_almost_equal( A.toarray(), A_npy, err_msg= 'Matrix A was not filled correctly')
+
+  #Matrix operations
+  numpy.testing.assert_almost_equal( A.norm(), numpy.sqrt((A_npy**2).sum()), err_msg='Matrix norm not computed correctly' )
+
+  #Matrix vector operations, x[i] = i
+  x = libmatrix.VectorBuilder( colmap )
+  for i in range(ndofs):
+    x.add_global( idx=[numpy.array([i])], data=[numpy.array([i],dtype=float)]  )
+  x = x.complete()  
+  assert x.map is A.domainmap
+
+  x_npy = numpy.arange(ndofs)
+  numpy.testing.assert_almost_equal( x.toarray(), x_npy )
+
+  #Matrix vector multiplication
+  b = A.apply( x )
+  assert b.map is A.rangemap
+
+  b_npy = A_npy.dot( x_npy )
+  numpy.testing.assert_almost_equal( b.toarray(), b_npy )
+
+  #Matrix solve
+  xsol = A.solve( rhs=b, precon=None, symmetric=False, tol=1e-10 )
+
+  numpy.testing.assert_almost_equal( xsol.toarray(), x_npy )
+
+@unittest
 @withcomm(2)
 def solve_laplace(comm):
   '''
@@ -87,11 +200,16 @@ def solve_laplace(comm):
     idx = numpy.arange(i,i+2)
     v.add_global( idx=[idx], data=block )
   v = v.complete()
-  numpy.testing.assert_almost_equal( v.sum(), 1., err_msg='Integrated source term' )
   v_npy =h* numpy.ones(ndofs)
   v_npy[0] /= 2
   v_npy[-1] /= 2
   numpy.testing.assert_almost_equal( v.toarray(), v_npy )
+
+  #Vector operations
+  vnorm_npy = numpy.sqrt((v_npy**2).sum())
+  numpy.testing.assert_almost_equal( v.sum(), 1., err_msg='Vector sum' )
+  numpy.testing.assert_almost_equal( v.norm(), vnorm_npy, err_msg='Vector norm' )
+  numpy.testing.assert_almost_equal( v.dot(v), vnorm_npy**2, err_msg='Vector dot product' )
 
   #Building the matrix
   block = (1./h)*numpy.array([[1,-1],[-1,1]])

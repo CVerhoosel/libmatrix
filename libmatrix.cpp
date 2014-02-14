@@ -532,6 +532,8 @@ private:
     auto vector1 = objects.get<vector_t>( handle.vector1, out(DEBUG) );
     auto vector2 = objects.get<vector_t>( handle.vector2, out(DEBUG) );
   
+    ASSERT( vector1->getMap()==vector2->getMap() );
+
     scalar_t dot = vector1->dot( *vector2 );
   
     gather( &dot );
@@ -637,6 +639,7 @@ private:
     bcast( &scalar );
     auto self = objects.get<multivector_t>( handle.self, out(DEBUG) );
     auto other = objects.get<const multivector_t>( handle.other, out(DEBUG) );
+    ASSERT( self->getMap() == other->getMap() );
     self->update( scalar.alpha, *other, scalar.beta );
   }
 
@@ -1086,6 +1089,9 @@ private:
     auto matrix = objects.get<const operator_t>( handle.matrix, out(DEBUG) );
     auto lhs = objects.get<vector_t>( handle.lhs, out(DEBUG) );
     auto rhs = objects.get<const vector_t>( handle.rhs, out(DEBUG) );
+
+    ASSERT( matrix->getDomainMap()==lhs->getMap() );
+    ASSERT( matrix->getRangeMap()==rhs->getMap() );
 
     auto linprob = Teuchos::rcp( new linearproblem_t( matrix, lhs, rhs ) );
   
