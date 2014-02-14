@@ -158,12 +158,15 @@ def distributed_matrix(comm):
   for i in range(ndofs):
     x.add_global( idx=[numpy.array([i])], data=[numpy.array([i],dtype=float)]  )
   x = x.complete()  
+  assert x.map is A.domainmap
 
   x_npy = numpy.arange(ndofs)
   numpy.testing.assert_almost_equal( x.toarray(), x_npy )
 
   #Matrix vector multiplication
   b = A.apply( x )
+  assert b.map is A.rangemap
+
 
   b_npy = A_npy.dot( x_npy )
   numpy.testing.assert_almost_equal( b.toarray(), b_npy )

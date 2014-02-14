@@ -1090,6 +1090,9 @@ private:
     auto lhs = objects.get<vector_t>( handle.lhs, out(DEBUG) );
     auto rhs = objects.get<const vector_t>( handle.rhs, out(DEBUG) );
 
+    ASSERT( matrix->getDomainMap()==lhs->getMap() );
+    ASSERT( matrix->getRangeMap()==rhs->getMap() );
+
     auto linprob = Teuchos::rcp( new linearproblem_t( matrix, lhs, rhs ) );
   
     objects.set( handle.linprob, linprob, out(DEBUG) );
