@@ -74,6 +74,19 @@ typedef Belos::SolverFactory<scalar_t,multivector_t,operator_t> solverfactory_t;
 typedef Teuchos::ScalarTraits<scalar_t>::magnitudeType magnitude_t;
 typedef Tpetra::Export<local_t,global_t,node_t> export_t;
 
+inline Teuchos::Array<local_t> get_none_nan_entries( Teuchos::RCP<const vector_t>& nanvec )
+{
+  local_t i = 0;
+  Teuchos::Array<local_t> items;
+  for ( auto const &v : nanvec->getData() ) {
+    if ( ! std::isnan( v ) ) {
+      items.push_back( i );
+    }
+    i++;
+  }
+  return items;
+}
+
 class params_t : public Teuchos::Describable, public Teuchos::ParameterList {};
 
 class linearproblem_t : public Teuchos::Describable, public Belos::LinearProblem<scalar_t,multivector_t,operator_t> {
@@ -970,52 +983,74 @@ private:
     objects.set( handle.conmat, conmat, out(DEBUG) );
   }
 
-  void matrix_constrained() /* matrix vector multiplication
+  void matrix_constrained() /* applying constraints to matrix
      
-       -> broadcast HANDLE handle.{matrix,vector}
+       -> broadcast HANDLE handle.{constrained,matrix,lcons,rcons}
   */{
   
-    struct { handle_t constrained, matrix, vector; } handle;
+    struct { handle_t constrained, matrix, lcons, rcons; } handle;
     bcast( &handle );
 
-    auto matrix = objects.get<crsmatrix_t>( handle.matrix, out(DEBUG) );
-    auto vector = objects.get<vector_t>( handle.vector, out(DEBUG) );
+    //Get the original matrix and constraints vector
+    auto matrix = objects.get<const crsmatrix_t>( handle.matrix, out(DEBUG) );
+    auto lcons  = objects.get<const vector_t>( handle.lcons, out(DEBUG) );
+    auto rcons  = objects.get<const vector_t>( handle.rcons, out(DEBUG) );
 
-    auto params = Teuchos::rcp( new params_t );
-    params->set("fillComplete clone",false);
+    ASSERT( matrix->isFillComplete() );
+    ASSERT( matrix->getRangeMap()==matrix->getRowMap() );
+    ASSERT( matrix->getRangeMap()==matrix->getDomainMap() );
+    ASSERT( lcons->getMap()==matrix->getRangeMap() );
+    ASSERT( rcons->getMap()==matrix->getDomainMap() );
 
-    auto constrained = matrix->clone( matrix->getNode(), params );
-    constrained->expertStaticFillComplete( matrix->getDomainMap(), matrix->getRangeMap() );
+    //Get the constrained indices
+    auto lcon_items = get_none_nan_entries( lcons );
+    auto rcon_items = get_none_nan_entries( rcons );
 
-    vector_t scalevec ( *vector );
-    for ( auto &v : scalevec.getDataNonConst() ) { v = std::isnan( v ); }
+    //Create the to-be-filled constrained matrix
+    auto builder = Teuchos::rcp( new crsmatrix_t( matrix->getRowMap(), matrix->getColMap(), 0 ) );
 
-    constrained->leftScale( scalevec ); 
-    constrained->rightScale( scalevec ); 
-
-    //Adding ones to diagonal
-    constrained->resumeFill();
+    Teuchos::ArrayView<const local_t> icols;
+    Teuchos::ArrayView<const scalar_t> ivals;
 
     local_t irow;
     scalar_t one = 1.;
     Teuchos::ArrayView<const local_t> diagindex ( &irow, 1 );
     Teuchos::ArrayView<const scalar_t> diagvalue ( &one, 1 );
-    Teuchos::ArrayView<const local_t> icols;
 
-    for( irow = 0 ; irow < constrained->getNodeNumRows() ; irow++ )
+    local_t icol;
+    for( irow = 0 ; irow < matrix->getNodeNumRows() ; irow++ )
     {
-      if( !std::isnan( vector->getData()[irow] ) )
-      {
-        constrained->getCrsGraph()->getLocalRowView( irow, icols );
-        ASSERT( contains( icols, irow ) ); //Preventing application of constraint to non-allocated diagonal.
+      matrix->getLocalRowView ( irow,  icols, ivals );
 
-        constrained->replaceLocalValues( irow,  diagindex, diagvalue );
+      if( !contains(lcon_items,irow) )
+      {
+        scalar_t *nonconst_ivals_c = new scalar_t [ ivals.size() ] ();
+        Teuchos::ArrayView<scalar_t> nonconst_ivals ( nonconst_ivals_c, ivals.size() );
+
+        for( icol = 0 ; icol < icols.size() ; icol++ )
+        {
+          if( !contains(rcon_items,icols[icol]) )
+          {
+            nonconst_ivals[icol] = ivals[icol];
+          }
+        }
+        builder->insertLocalValues ( irow,  icols, nonconst_ivals );
+
+        delete [] nonconst_ivals_c;
+      }
+      else
+      {
+        builder->insertLocalValues ( irow, diagindex, diagvalue );
       }
     }
 
-    constrained->expertStaticFillComplete( constrained->getDomainMap(), constrained->getRangeMap() );
+    //Fill complete
+    builder->fillComplete( matrix->getDomainMap(), matrix->getRangeMap() );
+    // auto exporter = Teuchos::rcp( new export_t( matrix->getRowMap(), matrix->getRangeMap() ) );
+    // auto constrained = Tpetra::exportAndFillCompleteCrsMatrix( Teuchos::rcp_dynamic_cast<const crsmatrix_t>( builder, true ), *exporter, matrix->getDomainMap(), matrix->getRangeMap() );
+    // // defaults to "ADD" combine mode (reverseMode=false in Tpetra_CrsMatrix_def.hpp)
 
-    objects.set( handle.constrained, constrained, out(DEBUG) );
+    objects.set( handle.constrained, builder, out(DEBUG) );
   }
   
   void vector_nan_from_supp() /* set vector items to nan for non suppored rows

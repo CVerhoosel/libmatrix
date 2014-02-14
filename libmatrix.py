@@ -243,9 +243,9 @@ class LibMatrix( InterComm ):
     return constrained_handle
 
   @bcast_token
-  def matrix_constrained( self, matrix_handle, vector_handle ):
+  def matrix_constrained( self, matrix_handle, lcons_handle, rcons_handle ):
     constrained_handle = self.claim_handle()
-    self.bcast( [ constrained_handle, matrix_handle, vector_handle ], handle_t )
+    self.bcast( [ constrained_handle, matrix_handle, lcons_handle, rcons_handle ], handle_t )
     return constrained_handle
 
   @bcast_token
@@ -709,8 +709,8 @@ class Matrix( Operator ):
     assert array.shape == self.shape
     return array
 
-  def constrained( self, selection ):
-    handle = self.comm.matrix_constrained( self.handle, selection.handle )
+  def constrained( self, lcons, rcons=None ):
+    handle = self.comm.matrix_constrained( self.handle, lcons.handle, rcons.handle if rcons else lcons.handle )
     return Matrix( handle, self.domainmap, self.rangemap )
 
   def build_precon( self, precontype, fill=5., absthreshold=0., relthreshold=1., relax=0. ):
