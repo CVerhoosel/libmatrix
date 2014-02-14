@@ -1017,6 +1017,8 @@ private:
     Teuchos::ArrayView<const local_t> diagindex ( &irow, 1 );
     Teuchos::ArrayView<const scalar_t> diagvalue ( &one, 1 );
 
+    Teuchos::Array<local_t>  cols;
+    Teuchos::Array<scalar_t> vals;
     local_t icol;
     for( irow = 0 ; irow < matrix->getNodeNumRows() ; irow++ )
     {
@@ -1024,19 +1026,17 @@ private:
 
       if( !contains(lcon_items,irow) )
       {
-        scalar_t *nonconst_ivals_c = new scalar_t [ ivals.size() ] ();
-        Teuchos::ArrayView<scalar_t> nonconst_ivals ( nonconst_ivals_c, ivals.size() );
-
         for( icol = 0 ; icol < icols.size() ; icol++ )
         {
-          if( !contains(rcon_items,icols[icol]) )
-          {
-            nonconst_ivals[icol] = ivals[icol];
-          }
+           if( !contains(rcon_items,icols[icol]) )
+           {
+             cols.push_back( icols[icol] );
+             vals.push_back( ivals[icol] );
+           }
         }
-        builder->insertLocalValues ( irow,  icols, nonconst_ivals );
-
-        delete [] nonconst_ivals_c;
+        builder->insertLocalValues ( irow,  cols(), vals() );
+        cols.clear();
+        vals.clear();
       }
       else
       {
