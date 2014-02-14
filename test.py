@@ -135,7 +135,7 @@ def distributed_matrix(comm):
 
   #Create overlapping column map
   coldofmap = map( numpy.arange, numpy.maximum(bounds[:-1]-2,0), numpy.minimum(bounds[1:]+3,ndofs) )
-  colmap = libmatrix.Map( comm, coldofmap, ndofs )
+  colmap = libmatrix.Map( comm, coldofmap, ownedmap=rowmap.ownedmap )
 
   #Initialize the matrix builder
   A = libmatrix.MatrixBuilder( (rowmap,colmap) )
@@ -167,12 +167,13 @@ def distributed_matrix(comm):
   b = A.apply( x )
   assert b.map is A.rangemap
 
-
   b_npy = A_npy.dot( x_npy )
   numpy.testing.assert_almost_equal( b.toarray(), b_npy )
 
   #Matrix solve
-  #xsol = A.solve( rhs=b, precon=None, symmetric=False, tol=1e-10 )
+  xsol = A.solve( rhs=b, precon=None, symmetric=False, tol=1e-10 )
+
+  numpy.testing.assert_almost_equal( xsol.toarray(), x_npy )
 
 @unittest
 @withcomm(2)
