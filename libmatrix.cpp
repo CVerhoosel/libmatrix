@@ -1014,8 +1014,8 @@ private:
 
     local_t irow;
     scalar_t one = 1.;
-    Teuchos::ArrayView<const local_t> diagindex ( &irow, 1 );
-    Teuchos::ArrayView<const scalar_t> diagvalue ( &one, 1 );
+    Teuchos::ArrayView<const local_t> diagcol ( &irow, 1 );
+    Teuchos::ArrayView<const scalar_t> diagval ( &one, 1 );
 
     Teuchos::Array<local_t>  cols;
     Teuchos::Array<scalar_t> vals;
@@ -1026,6 +1026,8 @@ private:
 
       if( !contains(lcon_items,irow) )
       {
+        cols.reserve( icols.size() );
+        vals.reserve( ivals.size() );
         for( icol = 0 ; icol < icols.size() ; icol++ )
         {
            if( !contains(rcon_items,icols[icol]) )
@@ -1040,15 +1042,12 @@ private:
       }
       else
       {
-        builder->insertLocalValues ( irow, diagindex, diagvalue );
+        builder->insertLocalValues ( irow, diagcol, diagval );
       }
     }
 
     //Fill complete
     builder->fillComplete( matrix->getDomainMap(), matrix->getRangeMap() );
-    // auto exporter = Teuchos::rcp( new export_t( matrix->getRowMap(), matrix->getRangeMap() ) );
-    // auto constrained = Tpetra::exportAndFillCompleteCrsMatrix( Teuchos::rcp_dynamic_cast<const crsmatrix_t>( builder, true ), *exporter, matrix->getDomainMap(), matrix->getRangeMap() );
-    // // defaults to "ADD" combine mode (reverseMode=false in Tpetra_CrsMatrix_def.hpp)
 
     objects.set( handle.constrained, builder, out(DEBUG) );
   }
