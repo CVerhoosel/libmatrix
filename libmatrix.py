@@ -407,8 +407,10 @@ class Map( Object ):
 
     if not ownedmap:
       owned = self.__distribute( used )
+      self.ownedmap = None
     else:
       assert ownedmap.is1to1
+      self.ownedmap = ownedmap
       owned = ownedmap.used
 
     self.local2global = []
@@ -421,11 +423,12 @@ class Map( Object ):
         self.is1to1 = False
       self.local2global.append( x )
 
-    if self.is1to1:
-      self.ownedmap = self
-    else:  
-      self.ownedmap = Map( comm, owned )
-      assert self.ownedmap.is1to1
+    if not self.ownedmap:
+      if self.is1to1:
+        self.ownedmap = self
+      else:  
+        self.ownedmap = Map( comm, owned )
+        assert self.ownedmap.is1to1
 
     self.size = size
     Object.__init__( self, comm, comm.map_new( self.local2global ) )
