@@ -873,5 +873,6 @@ def ArrayBuilder( shape ):
   if len( shape ) == 1:
     return VectorBuilder( shape[0] )
 
+  raise NotImplementedError()  
 
 # vim:shiftwidth=2:foldmethod=indent:foldnestmax=2
