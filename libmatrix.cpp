@@ -1012,43 +1012,44 @@ private:
     Teuchos::ArrayView<const local_t> icols;
     Teuchos::ArrayView<const scalar_t> ivals;
 
-    local_t irow;
-    scalar_t one = 1.;
-    Teuchos::ArrayView<const local_t> diagindex ( &irow, 1 );
-    Teuchos::ArrayView<const scalar_t> diagvalue ( &one, 1 );
+    Teuchos::Array<local_t> diagcol ( 1 );
+    Teuchos::Array<scalar_t> diagval ( 1, 1. );
 
-    local_t icol;
+    Teuchos::Array<local_t>  cols;
+    Teuchos::Array<scalar_t> vals;
+    local_t irow, icol, idom;
     for( irow = 0 ; irow < matrix->getNodeNumRows() ; irow++ )
     {
       matrix->getLocalRowView ( irow,  icols, ivals );
 
       if( !contains(lcon_items,irow) )
       {
-        scalar_t *nonconst_ivals_c = new scalar_t [ ivals.size() ] ();
-        Teuchos::ArrayView<scalar_t> nonconst_ivals ( nonconst_ivals_c, ivals.size() );
-
+        cols.reserve( icols.size() );
+        vals.reserve( ivals.size() );
         for( icol = 0 ; icol < icols.size() ; icol++ )
         {
-          if( !contains(rcon_items,icols[icol]) )
-          {
-            nonconst_ivals[icol] = ivals[icol];
-          }
-        }
-        builder->insertLocalValues ( irow,  icols, nonconst_ivals );
+           idom = rcons->getMap()->getLocalElement(matrix->getColMap()->getGlobalElement( icols[icol] ));
 
-        delete [] nonconst_ivals_c;
+           if( !contains(rcon_items, idom ) )
+           {
+             cols.push_back( icols[icol] );
+             vals.push_back( ivals[icol] );
+           }
+        }
+        builder->insertLocalValues ( irow,  cols(), vals() );
+        cols.clear();
+        vals.clear();
       }
       else
       {
-        builder->insertLocalValues ( irow, diagindex, diagvalue );
+        diagcol[0] = matrix->getColMap()->getLocalElement(matrix->getRowMap()->getGlobalElement(irow));
+        builder->insertLocalValues ( irow, diagcol(), diagval() );
       }
     }
 
+
     //Fill complete
     builder->fillComplete( matrix->getDomainMap(), matrix->getRangeMap() );
-    // auto exporter = Teuchos::rcp( new export_t( matrix->getRowMap(), matrix->getRangeMap() ) );
-    // auto constrained = Tpetra::exportAndFillCompleteCrsMatrix( Teuchos::rcp_dynamic_cast<const crsmatrix_t>( builder, true ), *exporter, matrix->getDomainMap(), matrix->getRangeMap() );
-    // // defaults to "ADD" combine mode (reverseMode=false in Tpetra_CrsMatrix_def.hpp)
 
     objects.set( handle.constrained, builder, out(DEBUG) );
   }

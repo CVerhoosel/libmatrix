@@ -177,6 +177,77 @@ def distributed_matrix(comm):
 
 @unittest
 @withcomm(2)
+def matrix_with_zero_blocks(comm):
+  '''
+  Create, constrain and solve the matrix [[0,I],[0,0]] 
+  '''
+
+  nfree = 7
+  ncons = 3
+  ndofs = nfree+ncons 
+
+  A_npy = numpy.eye( ndofs, k=ncons )
+
+  #Create overlapping row map
+  bounds = ( (ndofs-1) * numpy.arange( comm.nprocs+1, dtype=float ) / comm.nprocs ).astype( int )
+  rowdofmap = map( numpy.arange, bounds[:-1], bounds[1:]+1 )
+  rowmap = libmatrix.Map( comm, rowdofmap, ndofs )
+
+  #Create overlapping column map
+  bounds = ( (ndofs-1) * numpy.arange( comm.nprocs+1, dtype=float ) / comm.nprocs ).astype( int )
+  coldofmap = map( numpy.arange, bounds[:-1]+ncons, numpy.minimum(bounds[1:]+ncons+1,ndofs) )
+  colmap = libmatrix.Map( comm, coldofmap, ownedmap=rowmap.ownedmap )
+
+  #Initialize the matrix builder
+  A = libmatrix.MatrixBuilder( (rowmap,colmap) )
+
+  #Assemble the matrix
+  for i in range(nfree): 
+    A.add_global( idx=[[i],[i+ncons]], data=numpy.array([[1.]]) )
+  A = A.complete()   
+
+  numpy.testing.assert_almost_equal( A.toarray(), A_npy, err_msg= 'Matrix A was not filled correctly')
+
+  #Vector x[i] = i
+  x = libmatrix.VectorBuilder( A.rangemap )
+  for i in range(ndofs):
+    x.add_global( idx=[numpy.array([i])], data=[numpy.array([i],dtype=float)]  )
+  x = x.complete()  
+
+  x_npy = numpy.arange(ndofs,dtype=float)
+  numpy.testing.assert_almost_equal( x.toarray(), x_npy )
+
+  #Vector b[i] = ndofs-i-1
+  b = libmatrix.VectorBuilder( A.domainmap )
+  for i in range(ndofs):
+    b.add_global( idx=[numpy.array([i])], data=[numpy.array([ndofs-i-1],dtype=float)]  )
+  b = b.complete()  
+
+  b_npy = numpy.arange(ndofs,0,-1,dtype=float)-1
+  numpy.testing.assert_almost_equal( b.toarray(), b_npy )
+
+  #Right constraints
+  rcons = x.less( ncons-0.5 )
+  rcons_npy = numpy.arange(ndofs,dtype=float)
+  rcons_npy[ncons:] = numpy.nan
+  numpy.testing.assert_almost_equal( rcons.toarray(), rcons_npy )
+
+  #Left constraints
+  lcons = b.less( ncons-0.5 )
+  lcons_npy = numpy.arange(ndofs,0,-1,dtype=float)-1
+  lcons_npy[:ndofs-ncons] = numpy.nan
+  numpy.testing.assert_almost_equal( lcons.toarray(), lcons_npy )
+
+  #Constrain the matrix
+  #TODO
+  #Does not work since the diagonal entries to be added are not
+  #in the column map. Adding these to the above-defined column
+  #map does not work, since in the exportAndFillComplete operation
+  #these column indices will be lost.
+  #Ac = A.constrained( lcons, rcons )
+
+@unittest
+@withcomm(2)
 def solve_laplace(comm):
   '''
   Solve the 1D Laplace equation:

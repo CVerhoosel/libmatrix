@@ -407,8 +407,10 @@ class Map( Object ):
 
     if not ownedmap:
       owned = self.__distribute( used )
+      self.ownedmap = None
     else:
       assert ownedmap.is1to1
+      self.ownedmap = ownedmap
       owned = ownedmap.used
 
     self.local2global = []
@@ -421,11 +423,12 @@ class Map( Object ):
         self.is1to1 = False
       self.local2global.append( x )
 
-    if self.is1to1:
-      self.ownedmap = self
-    else:  
-      self.ownedmap = Map( comm, owned )
-      assert self.ownedmap.is1to1
+    if not self.ownedmap:
+      if self.is1to1:
+        self.ownedmap = self
+      else:  
+        self.ownedmap = Map( comm, owned )
+        assert self.ownedmap.is1to1
 
     self.size = size
     Object.__init__( self, comm, comm.map_new( self.local2global ) )
@@ -840,25 +843,35 @@ class Graph( Object ):
     Object.__init__( self, comm, comm.graph_new( rowmap.handle, colmap.handle, rows ) )
 
 
-class ScalarBuilder( object ):
+class TensorBuilder( object ):
 
-  def __init__( self ):
-    self.value = 0.
+  def __init__( self, shape ):
+    self.array = numpy.zeros(shape)
 
-  def add_global( self, index, value ):
-    assert not index
-    self.value += value
+  def add_global( self, index, array ):
+    #assert not index
+    self.array[index] += array
 
   def complete( self ):
-    return self.value
+    return self.array
 
 def ArrayBuilder( shape ):
+  if not shape:
+    return TensorBuilder( shape )
+
+  allints = all([isinstance(sh,int) for sh in shape])
+  allmaps = all([isinstance(sh,Map) for sh in shape])
+
+  if allints==False and allmaps==False:
+    raise NotImplementedError()
+
+  if allints:
+    return TensorBuilder( shape )
+
   if len( shape ) == 2:
     return MatrixBuilder( shape )
   if len( shape ) == 1:
     return VectorBuilder( shape[0] )
-  assert not shape
-  return ScalarBuilder()
 
 
 # vim:shiftwidth=2:foldmethod=indent:foldnestmax=2
