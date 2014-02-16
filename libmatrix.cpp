@@ -1012,14 +1012,12 @@ private:
     Teuchos::ArrayView<const local_t> icols;
     Teuchos::ArrayView<const scalar_t> ivals;
 
-    local_t irow;
-    scalar_t one = 1.;
-    Teuchos::ArrayView<const local_t> diagcol ( &irow, 1 );
-    Teuchos::ArrayView<const scalar_t> diagval ( &one, 1 );
+    Teuchos::Array<local_t> diagcol ( 1 );
+    Teuchos::Array<scalar_t> diagval ( 1, 1. );
 
     Teuchos::Array<local_t>  cols;
     Teuchos::Array<scalar_t> vals;
-    local_t icol;
+    local_t irow, icol, idom;
     for( irow = 0 ; irow < matrix->getNodeNumRows() ; irow++ )
     {
       matrix->getLocalRowView ( irow,  icols, ivals );
@@ -1030,7 +1028,9 @@ private:
         vals.reserve( ivals.size() );
         for( icol = 0 ; icol < icols.size() ; icol++ )
         {
-           if( !contains(rcon_items,icols[icol]) )
+           idom = rcons->getMap()->getLocalElement(matrix->getColMap()->getGlobalElement( icols[icol] ));
+
+           if( !contains(rcon_items, idom ) )
            {
              cols.push_back( icols[icol] );
              vals.push_back( ivals[icol] );
@@ -1042,9 +1042,11 @@ private:
       }
       else
       {
-        builder->insertLocalValues ( irow, diagcol, diagval );
+        diagcol[0] = matrix->getColMap()->getLocalElement(matrix->getRowMap()->getGlobalElement(irow));
+        builder->insertLocalValues ( irow, diagcol(), diagval() );
       }
     }
+
 
     //Fill complete
     builder->fillComplete( matrix->getDomainMap(), matrix->getRangeMap() );
