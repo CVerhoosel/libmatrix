@@ -1,7 +1,6 @@
 import numpy
 from mpi4py import MPI
 
-
 class InterComm( object ):
   'generic MPI communicator wrapper'
 
@@ -23,11 +22,15 @@ class InterComm( object ):
     array = numpy.empty( self.nprocs, dtype=dtype )
     self.__comm.Gather( None, [ array, MPI.BYTE ], root=MPI.ROOT )
     return array
-  
+
   def gather_equal( self, dtype ):
     array = self.gather( dtype )
     assert numpy.all( array[1:] == array[0] )
     return array[0]
+
+  def reduce( self, dtype, op ):
+    array = self.gather( dtype )
+    return op(array)
   
   def scatter( self, array, dtype ):
     array = numpy.ascontiguousarray( array, dtype=dtype )

@@ -159,7 +159,12 @@ class LibMatrix( InterComm ):
   @bcast_token
   def vector_sum( self, handle ):
     self.bcast( handle, handle_t )
-    return self.gather( scalar_t ).sum()
+    return self.reduce( scalar_t, numpy.sum )
+
+  @bcast_token
+  def vector_max( self, handle ):
+    self.bcast( handle, handle_t )
+    return self.reduce( scalar_t, numpy.max )
 
   @bcast_token
   def vector_dot( self, handle1, handle2 ):
@@ -210,6 +215,11 @@ class LibMatrix( InterComm ):
     precon_handle = self.claim_handle()
     self.bcast( [ precon_handle, matrix_handle, precontype_handle, preconparams_handle ], handle_t )
     return precon_handle
+
+  @bcast_token
+  def operator_condest( self, operator_handle, solverparams_handle, solvername_handle ):
+    self.bcast( [operator_handle,solverparams_handle,solvername_handle], handle_t )
+    return self.gather_equal( scalar_t )
 
   @bcast_token
   def matrix_add( self, mat1_handle, mat2_handle, scale_mat1, scale_mat2 ):
@@ -482,6 +492,9 @@ class Vector( Object ):
   def sum( self ):
     return self.comm.vector_sum( self.handle )
 
+  def max( self ):
+    return self.comm.vector_max( self.handle )
+
   def dot( self, other ):
     assert isinstance( other, Vector )
     assert self.shape == other.shape
@@ -678,6 +691,20 @@ class Operator( Object ):
     if not name:
       name = 'CG' if symmetric else 'GMRES'
     return linprob.solve( name=name, tol=tol, **kwargs )
+
+  def condest( self, tol, symmetric=False, maxiter=1000, outfreq=10 ):
+    # from BelosTypes.h
+    Warnings, IterationDetails, OrthoDetails, FinalSummary, TimingDetails, StatusTestDetails, Debug = 2**numpy.arange(7)
+    General, Brief = range(2)
+    solverparams = ParameterList( self.comm, {
+      'Verbosity': StatusTestDetails | FinalSummary,
+      'Maximum Iterations': maxiter,
+      'Output Style': Brief,
+      'Convergence Tolerance': tol,
+      'Output Frequency': outfreq,
+    })
+    solver_handle = _solvers.index( 'CG' if symmetric else 'GMRES' )
+    return self.comm.operator_condest( self.handle, solverparams.handle, solver_handle )
 
 class Matrix( Operator ):
 

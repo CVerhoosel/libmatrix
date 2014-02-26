@@ -341,6 +341,13 @@ def solve_laplace(comm):
   x = Ac.solve( rhs=vc, precon=None, symmetric=True, tol=1e-10 )
   numpy.testing.assert_almost_equal( x.toarray(), x_npy )
 
+  #Maximum operation
+  numpy.testing.assert_almost_equal( x.max(), x_npy.max() )
+
+  #Compute the condition number estimate
+  condest = Ac.condest( tol=1e-10, symmetric=True )
+  numpy.testing.assert_almost_equal( condest, numpy.linalg.cond( Ac_npy, p=1 ) )
+
 ## END UNIT TESTS ##
 
 unittest.exit()

@@ -2,6 +2,7 @@
 #include <Tpetra_Vector.hpp>
 #include <Tpetra_Version.hpp>
 #include <Tpetra_CrsMatrix.hpp>
+#include <Tpetra_RowMatrixTransposer.hpp>
 
 #include <BelosTpetraAdapter.hpp>
 #include <BelosSolverFactory.hpp>
@@ -67,12 +68,14 @@ typedef Tpetra::Vector<scalar_t,local_t,global_t,node_t> vector_t;
 typedef Tpetra::Operator<scalar_t,local_t,global_t,node_t> operator_t;
 typedef Tpetra::MultiVector<scalar_t,local_t,global_t,node_t> multivector_t;
 typedef Tpetra::RowMatrix<scalar_t,local_t,global_t,node_t> rowmatrix_t;
+typedef Tpetra::RowMatrixTransposer<scalar_t,local_t,global_t,node_t> rowmatrixtransposer_t;
 typedef Tpetra::CrsMatrix<scalar_t,local_t,global_t,node_t> crsmatrix_t;
 typedef Tpetra::CrsGraph<local_t,global_t,node_t> crsgraph_t;
 typedef Tpetra::RowGraph<local_t,global_t,node_t> rowgraph_t;
 typedef Belos::SolverFactory<scalar_t,multivector_t,operator_t> solverfactory_t;
 typedef Teuchos::ScalarTraits<scalar_t>::magnitudeType magnitude_t;
 typedef Tpetra::Export<local_t,global_t,node_t> export_t;
+typedef Ifpack2::Preconditioner<scalar_t,local_t,global_t,node_t> precon_t;
 
 inline Teuchos::Array<local_t> get_none_nan_entries( Teuchos::RCP<const vector_t>& nanvec )
 {
@@ -585,6 +588,25 @@ private:
     gather( &sum );
   }
 
+  void vector_max() /* compute the max of a vector
+
+       -> broadcast HANDLE handle.vector
+      <-  gather SCALAR max
+  */{
+
+    struct { handle_t vector; } handle;
+    bcast( &handle );
+    auto vector = objects.get<vector_t>( handle.vector, out(DEBUG) );
+
+    scalar_t max = NAN;
+    for ( auto const &v : vector->getData() )
+    {
+      if( std::isnan(max) || v>max ) max=v;
+    }
+
+    gather( &max );
+  }
+
   void vector_complete() /* export vector
 
        -> broadcast HANDLE handle.{vector,builder,exporter}
@@ -901,6 +923,149 @@ private:
     matrix->apply( *rhs, *lhs );
   }
 
+  void operator_condest() /* compute the operator's condition number
+
+      -> broadcast HANDLE handle.operator
+      -> gather SCALAR condest
+  */{
+
+    struct { handle_t oper, solverparams, solvertype; } handle;
+    bcast( &handle );
+
+    //TODO Generalize to operator
+    auto B = objects.get<crsmatrix_t>( handle.oper, out(DEBUG) );
+
+    //Create the solver
+    solverfactory_t factory;
+    auto solverparams = objects.get<params_t>( handle.solverparams, out(DEBUG) );
+    auto solvermgr = factory.create( factory.supportedSolverNames()[handle.solvertype], solverparams );
+
+    ASSERT( B->getRangeMap()== B->getDomainMap() );
+
+    //Compute the transpose of the operator
+    rowmatrixtransposer_t tr ( B );
+    auto BT = tr.createTranspose();
+
+    ASSERT( BT->getRangeMap()== B->getRangeMap() );
+    ASSERT( BT->getRangeMap()== B->getRangeMap() );
+    ASSERT( BT->getRowMap()  == B->getRangeMap() );
+
+  /*+++++++++++++++++++++++++++
+    + Matrix 1-norm           +
+    + (inf-norm of transpose) +
+    +++++++++++++++++++++++++++*/
+
+    local_t irow;
+    scalar_t norm1B = 0.;
+    scalar_t rowsum;
+    Teuchos::ArrayView<const local_t> indices;
+    Teuchos::ArrayView<const scalar_t> values;
+
+    for( irow=0 ; irow<BT->getRowMap()->getNodeNumElements() ; irow++ )
+    {
+      BT->getLocalRowView(irow, indices, values);
+      rowsum = 0.;
+      for( auto &v : values ) rowsum += std::abs(v);
+      if( rowsum > norm1B ) norm1B=rowsum;
+    }
+
+    if (BT->isDistributed())
+    {
+      scalar_t lnorm1B = norm1B;
+      Teuchos::reduceAll(*BT->getRowMap()->getComm(),Teuchos::REDUCE_MAX,lnorm1B,Teuchos::outArg(norm1B));
+    }
+
+  /*+++++++++++++++++++++++
+    + Hager's algorithm   +
+    +++++++++++++++++++++++*/
+
+    //Construct the initial vectors for
+    auto x  = Teuchos::rcp( new vector_t( B->getRangeMap()  ) );
+    auto y  = Teuchos::rcp( new vector_t( B->getDomainMap() ) );
+    auto z  = Teuchos::rcp( new vector_t( B->getRangeMap()  ) );
+    auto xi = Teuchos::rcp( new vector_t( B->getDomainMap() ) );
+
+    x->putScalar( 1./x->getMap()->getGlobalNumElements() );
+
+    auto linprob = Teuchos::rcp( new linearproblem_t( B , y, x  ) );
+    auto adjprob = Teuchos::rcp( new linearproblem_t( BT, z, xi ) );
+
+    global_t iiter;
+    scalar_t gamma = NAN;
+
+    for( iiter=0 ; iiter<=x->getMap()->getGlobalNumElements(); iiter++ )
+    {
+      y->putScalar( 0. );
+      linprob->setProblem( y, x );
+
+      solvermgr->setProblem( linprob );
+      Belos::ReturnType result = solvermgr->solve();
+      ASSERT( result == Belos::Converged );
+
+      //Compute the sign vector
+      auto xi_vals = xi->getDataNonConst();
+      auto y_vals  = y->getData();
+
+      ASSERT( xi_vals.size()==y_vals.size() );
+
+      xi->putScalar(1.);
+      for( irow=0; irow<xi_vals.size() ; irow++ )
+      {
+        if( y_vals[irow] < 0. ) xi_vals[irow] = -1.;
+      }
+      z->putScalar( 0. );
+      adjprob->setProblem( z, xi );
+
+      solvermgr->setProblem( adjprob );
+      result = solvermgr->solve();
+      ASSERT( result == Belos::Converged );
+
+      if( z->normInf()<=z->dot(*x) )
+      {
+        gamma = y->norm1();
+        break;
+      }
+
+      scalar_t max    = NAN;
+      local_t  argmax = -1;
+      for( irow=0 ; irow<z->getMap()->getNodeNumElements() ; irow++ )
+      {
+        if( std::isnan(max) || std::abs(z->getData()[irow])>max )
+        {
+           max=std::abs(z->getData()[irow]);
+           argmax = irow;
+        }
+      }
+
+      Teuchos::Array<scalar_t> allmax ( nprocs, 0. );
+      Teuchos::Array<local_t> allargmax ( nprocs, -1 );
+      Teuchos::gatherAll(*x->getMap()->getComm(),1,&max,nprocs,allmax.getRawPtr());
+      Teuchos::gatherAll(*x->getMap()->getComm(),1,&argmax,nprocs,allargmax.getRawPtr());
+
+      int maxrank = 0;
+      max = allmax[0];
+      for( int rank = 1 ; rank < nprocs ; rank++ )
+      {
+        if( allmax[rank]>max )
+        {
+          maxrank = rank;
+          max     = allmax[rank];
+        }
+      }
+
+      x->putScalar(0.);
+      if( maxrank==myrank ) x->replaceLocalValue( allargmax[maxrank], 1. );
+    }
+
+    ASSERT( !std::isnan(gamma) );
+
+    out(INFO) << "Hager's algorithm converged in " << iiter << " iterations." << std::endl;
+
+    scalar_t condest = norm1B*gamma;
+
+    gather( &condest );
+  }
+
   void matrix_toarray() /* matrix vector multiplication
      
        -> broadcast HANDLE handle.matrix
@@ -1092,12 +1257,9 @@ private:
     precon->initialize();
     precon->compute();
   
-    magnitude_t condest = precon->computeCondEst( Ifpack2::Cheap );
-    out(INFO) << "Ifpack2 preconditioner's estimated condition number: " << condest << std::endl;
-  
     objects.set( handle.precon, precon, out(DEBUG) );
   }
-  
+
   void export_new() /* create new exporter
      
        -> broadcast HANDLE handle.{exporter,srcmap,dstmap}
