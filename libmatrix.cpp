@@ -943,8 +943,12 @@ private:
     ASSERT( B->getRangeMap()== B->getDomainMap() );
 
     //Compute the transpose of the operator
-    rowmatrixtransposer_t tr ( B );
-    auto BT = tr.createTranspose();
+    auto BT = B;
+    if( !solverparams->get("Symmetric",false) )
+    {
+      rowmatrixtransposer_t tr ( B );
+      BT = tr.createTranspose();
+    }
 
     ASSERT( BT->getRangeMap()== B->getRangeMap() );
     ASSERT( BT->getRangeMap()== B->getRangeMap() );
@@ -989,6 +993,12 @@ private:
 
     auto linprob = Teuchos::rcp( new linearproblem_t( B , y, x  ) );
     auto adjprob = Teuchos::rcp( new linearproblem_t( BT, z, xi ) );
+
+    if( solverparams->get("Symmetric",false) )
+    {
+      linprob->setHermitian();
+      adjprob->setHermitian();
+    }
 
     global_t iiter;
     scalar_t gamma = NAN;

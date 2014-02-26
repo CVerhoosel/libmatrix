@@ -692,16 +692,18 @@ class Operator( Object ):
       name = 'CG' if symmetric else 'GMRES'
     return linprob.solve( name=name, tol=tol, **kwargs )
 
-  def condest( self, tol, symmetric=False, maxiter=1000, outfreq=10 ):
+  def condest( self, tol, symmetric=False, precon=-1, maxiter=1000, outfreq=10 ):
     # from BelosTypes.h
     Warnings, IterationDetails, OrthoDetails, FinalSummary, TimingDetails, StatusTestDetails, Debug = 2**numpy.arange(7)
     General, Brief = range(2)
     solverparams = ParameterList( self.comm, {
-      'Verbosity': StatusTestDetails | FinalSummary,
+      'Verbosity': Warnings | FinalSummary,
       'Maximum Iterations': maxiter,
       'Output Style': Brief,
       'Convergence Tolerance': tol,
       'Output Frequency': outfreq,
+      'Preconditioner': precon,
+      'Symmetric': symmetric
     })
     solver_handle = _solvers.index( 'CG' if symmetric else 'GMRES' )
     return self.comm.operator_condest( self.handle, solverparams.handle, solver_handle )
