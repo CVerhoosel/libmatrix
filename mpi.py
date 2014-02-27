@@ -24,9 +24,7 @@ class InterComm( object ):
     return array
 
   def gather_equal( self, dtype ):
-    array = self.gather( dtype )
-    assert numpy.all( array[1:] == array[0] )
-    return array[0]
+    return self.reduce( dtype, assert_equal )
 
   def reduce( self, dtype, op ):
     array = self.gather( dtype )
@@ -75,3 +73,11 @@ class InterComm( object ):
 
   def __del__( self ):
     self.disconnect()
+
+###############################
+# Utility functions           #
+###############################
+
+def assert_equal( array ):
+  assert numpy.all( array[1:] == array[0] )
+  return array[0]
