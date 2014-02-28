@@ -20,6 +20,10 @@ bool_t   = numpy.dtype( _info.pop( 'bool_t'   ) )
 token_t  = numpy.dtype( _info.pop( 'token_t'  ) )
 char_t   = numpy.dtype( 'str' )
 
+# from BelosTypes.h
+Warnings, IterationDetails, OrthoDetails, FinalSummary, TimingDetails, StatusTestDetails, Debug = 2**numpy.arange(7)
+General, Brief = range(2)
+
 def cacheprop( f ):
   name = f.func_name
   def wrapped( self ):
@@ -697,9 +701,6 @@ class Operator( Object ):
     return linprob.solve( name=name, tol=tol, **kwargs )
 
   def condest( self, tol, symmetric=False, precon=-1, maxiter=1000, outfreq=10 ):
-    # from BelosTypes.h
-    Warnings, IterationDetails, OrthoDetails, FinalSummary, TimingDetails, StatusTestDetails, Debug = 2**numpy.arange(7)
-    General, Brief = range(2)
     solverparams = {
       'Verbosity': Warnings | FinalSummary,
       'Maximum Iterations': maxiter,
@@ -838,9 +839,6 @@ class LinearProblem( Object ):
     self.comm.linearproblem_set_precon( self.handle, precon.handle, right )
 
   def solve( self, name, tol, maxiter=1000, outfreq=10 ):
-    # from BelosTypes.h
-    Warnings, IterationDetails, OrthoDetails, FinalSummary, TimingDetails, StatusTestDetails, Debug = 2**numpy.arange(7)
-    General, Brief = range(2)
     solverparams = ParameterList( self.comm, {
       'Verbosity': StatusTestDetails | FinalSummary,
       'Maximum Iterations': maxiter,
