@@ -221,8 +221,8 @@ class LibMatrix( InterComm ):
     return precon_handle
 
   @bcast_token
-  def operator_condest( self, operator_handle, solverparams_handle, solvername_handle ):
-    self.bcast( [operator_handle,solverparams_handle,solvername_handle], handle_t )
+  def matrix_condest( self, operator_handle, params_handle, solvername_handle, preconname_handle ):
+    self.bcast( [operator_handle,params_handle,solvername_handle,preconname_handle], handle_t )
     return self.gather_equal( scalar_t )
 
   @bcast_token
@@ -700,23 +700,6 @@ class Operator( Object ):
       name = 'CG' if symmetric else 'GMRES'
     return linprob.solve( name=name, tol=tol, **kwargs )
 
-  def condest( self, tol, symmetric=False, precon=-1, maxiter=1000, outfreq=10 ):
-    solverparams = {
-      'Verbosity': Warnings | FinalSummary,
-      'Maximum Iterations': maxiter,
-      'Output Style': Brief,
-      'Convergence Tolerance': tol,
-      'Output Frequency': outfreq,
-    }
-    params = ParameterList( self.comm, {
-      'Solver Parameters': solverparams,
-      'Preconditioner': precon,
-      'Symmetric': symmetric,
-    })
-
-    solver_handle = _solvers.index( 'CG' if symmetric else 'GMRES' )
-    return self.comm.operator_condest( self.handle, params.handle, solver_handle )
-
 class Matrix( Operator ):
 
   def add( self, other, scale_self=1., scale_other=1. ):
@@ -763,6 +746,32 @@ class Matrix( Operator ):
     })
     myhandle = self.comm.precon_new( self.handle, _precons.index(precontype), preconparams.handle )
     return Operator( myhandle, self.rangemap, self.domainmap )
+
+  def condest( self, tol, symmetric=False, precon=None, maxiter=1000, outfreq=10, fill=5., absthreshold=0., relthreshold=1., relax=0. ):
+    solverparams = {
+      'Verbosity': Warnings | FinalSummary,
+      'Maximum Iterations': maxiter,
+      'Output Style': Brief,
+      'Convergence Tolerance': tol,
+      'Output Frequency': outfreq,
+    }
+    params = ParameterList( self.comm, {
+      'Symmetric': symmetric,
+      'Solver Parameters': solverparams,
+    })
+    if precon:
+      params['Preconditioner Parameters'] = {
+        'fact: %s level-of-fill' % precon.lower(): float(fill),
+        'fact: absolute threshold': float(absthreshold),
+        'fact: relative threshold': float(relthreshold),
+        'fact: relax value': float(relax),
+      }
+      precon_handle = _precons.index( precon )
+    else:  
+      precon_handle = numpy.array(-1,dtype=handle_t)
+      
+    solver_handle = _solvers.index( 'CG' if symmetric else 'GMRES' )
+    return self.comm.matrix_condest( self.handle, params.handle, solver_handle, precon_handle )
 
 
 class MatrixBuilder( Object ):

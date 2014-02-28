@@ -923,32 +923,50 @@ private:
     matrix->apply( *rhs, *lhs );
   }
 
-  void operator_condest() /* compute the operator's condition number
+  void matrix_condest() /* compute the operator's condition number
 
       -> broadcast HANDLE handle.operator
       -> gather SCALAR condest
   */{
 
-    struct { handle_t oper, params, solvertype; } handle;
+    struct { handle_t oper, params, solvertype, precontype; } handle;
     bcast( &handle );
 
-    //TODO Generalize to operator
-    auto B = objects.get<crsmatrix_t>( handle.oper, out(DEBUG) );
+    auto B = objects.get<const crsmatrix_t>( handle.oper, out(DEBUG) );
+
+    auto params = objects.get<Teuchos::ParameterList>( handle.params, out(DEBUG) );
 
     //Create the solver
     solverfactory_t factory;
-    auto params = objects.get<Teuchos::ParameterList>( handle.params, out(DEBUG) );
     auto solverparams = Teuchos::sublist(params,"Solver Parameters");
     auto solvermgr = factory.create( factory.supportedSolverNames()[handle.solvertype], solverparams );
+
+    //Create the preconditioner
+    Teuchos::RCP<precon_t> precon;
+    Ifpack2::Factory preconfactory;
+    auto preconparams = Teuchos::sublist(params,"Preconditioner Parameters");
+    if( handle.precontype!=-1 )
+    {
+      precon = preconfactory.create( supportedPreconNames[handle.precontype], B );
+      precon->setParameters( *preconparams );
+      precon->initialize();
+      precon->compute();
+    }
 
     ASSERT( B->getRangeMap()== B->getDomainMap() );
 
     //Compute the transpose of the operator
     auto BT = B;
+    auto preconT = precon;
     if( !params->get("Symmetric",false) )
     {
       rowmatrixtransposer_t tr ( B );
       BT = tr.createTranspose();
+
+      preconT = preconfactory.create( supportedPreconNames[handle.precontype], BT );
+      preconT->setParameters( *preconparams );
+      preconT->initialize();
+      preconT->compute();
     }
 
     ASSERT( BT->getRangeMap()== B->getRangeMap() );
@@ -994,6 +1012,12 @@ private:
 
     auto linprob = Teuchos::rcp( new linearproblem_t( B , y, x  ) );
     auto adjprob = Teuchos::rcp( new linearproblem_t( BT, z, xi ) );
+
+    if( handle.precontype != -1 )
+    {
+      linprob->setLeftPrec( precon  );
+      adjprob->setLeftPrec( preconT );
+    }
 
     if( params->get("Symmetric",false) )
     {
