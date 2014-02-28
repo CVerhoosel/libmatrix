@@ -357,19 +357,23 @@ class ParameterList( Object ):
   #</ParameterList>
 
   @staticmethod
-  def toxml( items ):
-    s = '<ParameterList>\n'
-    for key, value in items.items():
+  def toxml( items, name='ANONYMOUS' ):
+    s = '<ParameterList name="%s">\n' % name
+    for key,value in items.items():
       assert isinstance( key, str ), 'parameter keys should be strings'
-      if isinstance( value, bool ):  
-        dtype = 'bool'
-      elif isinstance( value, int ):
-        dtype = 'int'
-      elif isinstance( value, float ):
-        dtype = 'double'
+
+      if isinstance(value,dict):
+        s+=ParameterList.toxml(value,name=key)
       else:
-        raise Exception, 'invalid value %r' % value
-      s += '<Parameter isUsed="true" name="%s" type="%s" value="%s"/>\n' % ( key, dtype, value )
+        if isinstance( value, bool ):  
+          dtype = 'bool'
+        elif isinstance( value, int ):
+          dtype = 'int'
+        elif isinstance( value, float ):
+          dtype = 'double'
+        else:
+          raise Exception, 'invalid value %r' % value
+        s += '<Parameter isUsed="true" name="%s" type="%s" value="%s"/>\n' % ( key, dtype, value )
     s += '</ParameterList>'
     return s
 
@@ -696,17 +700,21 @@ class Operator( Object ):
     # from BelosTypes.h
     Warnings, IterationDetails, OrthoDetails, FinalSummary, TimingDetails, StatusTestDetails, Debug = 2**numpy.arange(7)
     General, Brief = range(2)
-    solverparams = ParameterList( self.comm, {
+    solverparams = {
       'Verbosity': Warnings | FinalSummary,
       'Maximum Iterations': maxiter,
       'Output Style': Brief,
       'Convergence Tolerance': tol,
       'Output Frequency': outfreq,
+    }
+    params = ParameterList( self.comm, {
+      'Solver Parameters': solverparams,
       'Preconditioner': precon,
-      'Symmetric': symmetric
+      'Symmetric': symmetric,
     })
+
     solver_handle = _solvers.index( 'CG' if symmetric else 'GMRES' )
-    return self.comm.operator_condest( self.handle, solverparams.handle, solver_handle )
+    return self.comm.operator_condest( self.handle, params.handle, solver_handle )
 
 class Matrix( Operator ):
 

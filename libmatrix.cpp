@@ -929,7 +929,7 @@ private:
       -> gather SCALAR condest
   */{
 
-    struct { handle_t oper, solverparams, solvertype; } handle;
+    struct { handle_t oper, params, solvertype; } handle;
     bcast( &handle );
 
     //TODO Generalize to operator
@@ -937,14 +937,15 @@ private:
 
     //Create the solver
     solverfactory_t factory;
-    auto solverparams = objects.get<params_t>( handle.solverparams, out(DEBUG) );
+    auto params = objects.get<Teuchos::ParameterList>( handle.params, out(DEBUG) );
+    auto solverparams = Teuchos::sublist(params,"Solver Parameters");
     auto solvermgr = factory.create( factory.supportedSolverNames()[handle.solvertype], solverparams );
 
     ASSERT( B->getRangeMap()== B->getDomainMap() );
 
     //Compute the transpose of the operator
     auto BT = B;
-    if( !solverparams->get("Symmetric",false) )
+    if( !params->get("Symmetric",false) )
     {
       rowmatrixtransposer_t tr ( B );
       BT = tr.createTranspose();
@@ -994,7 +995,7 @@ private:
     auto linprob = Teuchos::rcp( new linearproblem_t( B , y, x  ) );
     auto adjprob = Teuchos::rcp( new linearproblem_t( BT, z, xi ) );
 
-    if( solverparams->get("Symmetric",false) )
+    if( params->get("Symmetric",false) )
     {
       linprob->setHermitian();
       adjprob->setHermitian();
