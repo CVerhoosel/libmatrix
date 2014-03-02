@@ -9,9 +9,11 @@ Vector utilities
 Teuchos::RCP<vector_t> utils::vector::abs ( Teuchos::RCP<vector_t> vector )
 {
   auto absvector = Teuchos::rcp(new vector_t( vector->getMap() ));
+  auto in = vector->getData();
+  auto out = absvector->getDataNonConst();
   for( local_t irow=0 ; irow<absvector->getMap()->getNodeNumElements() ; irow++ )
   {
-    absvector->getDataNonConst()[irow] = std::abs(vector->getData()[irow]);
+    out[irow] = std::abs(in[irow]);
   }
   return absvector;
 }
