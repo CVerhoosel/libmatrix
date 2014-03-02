@@ -66,7 +66,7 @@ def create_overlapping_rowmap():
 @withcomm()
 def distributed_vector(comm):
   '''
-  Create a uncompletely filled vector "v" with entries i^2 if i is odd and 0 otherwise
+  Create a uncompletely filled vector "v" with entries 4*i*(n-i-1)/(n-1)**2-0.5 if i is even and 0 otherwise
   and a vector "w" with all entries equal to i
   '''
 
@@ -77,12 +77,13 @@ def distributed_vector(comm):
   rowmap = libmatrix.Map( comm, rowdofmap, ndofs )
 
   v   = libmatrix.VectorBuilder( rowmap )
-  for idx in range(1,ndofs+1,2):
-    v.add_global( idx=[numpy.array([idx])], data=[numpy.array([idx**2],dtype=float)] )
+  for idx in range(0,ndofs,2):
+    v.add_global( idx=[numpy.array([idx])], data=[numpy.array([(4./(ndofs-1)**2)*idx*(ndofs-1-idx)-0.5],dtype=float)] )
   v = v.complete()
-  
-  v_npy = numpy.arange(0,ndofs,dtype=float)**2
-  v_npy[0::2] = 0. 
+ 
+  v_npy = numpy.arange(0,ndofs,dtype=float)
+  v_npy = (4./(ndofs-1.)**2)*v_npy*(ndofs-1-v_npy)-0.5
+  v_npy[1::2] = 0. 
 
   numpy.testing.assert_almost_equal( v.toarray(), v_npy, err_msg='Vector "v" was not filled correctly' )
 
@@ -97,6 +98,7 @@ def distributed_vector(comm):
   numpy.testing.assert_almost_equal( (v*2.).toarray(), 2.*v_npy, err_msg='Scalar multiplication not computed correctly' )
   numpy.testing.assert_almost_equal( (v/2.).toarray(), v_npy/2., err_msg='Scalar division not computed correctly' )
   numpy.testing.assert_almost_equal( (2./(v+1.)).toarray(), 2./(v_npy+1.), err_msg='Scalar division not computed correctly' )
+  numpy.testing.assert_almost_equal( v.abs().toarray(), numpy.abs(v_npy), err_msg='Vector "v" absolute value failed' )
 
   #Create the vector w based on the reversed rowdofmap
   w = libmatrix.VectorBuilder( rowmap )

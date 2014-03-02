@@ -118,6 +118,12 @@ class LibMatrix( InterComm ):
     return vec_handle
 
   @bcast_token
+  def vector_abs( self, vec_handle ):
+    abs_handle = self.claim_handle()
+    self.bcast( [ vec_handle, abs_handle ], handle_t )
+    return abs_handle
+
+  @bcast_token
   def vector_copy( self, orig_handle ):
     copy_handle = self.claim_handle()
     self.bcast( [ copy_handle, orig_handle ], handle_t )
@@ -496,6 +502,9 @@ class Vector( Object ):
 
   def norm( self ):
     return self.comm.vector_norm( self.handle )
+
+  def abs ( self ):
+    return Vector( self.map, self.comm.vector_abs( self.handle ) )
 
   def sum( self ):
     return self.comm.vector_sum( self.handle )

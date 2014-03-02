@@ -38,11 +38,14 @@ print_info:
 	@echo "   Trilinos_BUILD_SHARED_LIBS = $(Trilinos_BUILD_SHARED_LIBS)"
 	@echo "End of Trilinos details\n"
 
-libmatrix.mpi: libmatrix.cpp
-	$(CXX) $(CXX_FLAGS) $< -o $@ $(LINK_FLAGS) $(INCLUDE_DIRS) $(LIBRARY_DIRS) $(LIBRARIES)
+%.o: %.cpp
+	$(CXX) -c $(CXX_FLAGS) $< -o $@ $(INCLUDE_DIRS)
+
+libmatrix.mpi: libmatrix.o utils.o
+	$(CXX) $(CXX_FLAGS) $^ -o $@ $(LINK_FLAGS) $(INCLUDE_DIRS) $(LIBRARY_DIRS) $(LIBRARIES)
 
 clean:
-	rm -f libmatrix.mpi *.pyc
+	rm -f libmatrix.mpi *.o *.pyc
 
 test: libmatrix.mpi
 	python test.py

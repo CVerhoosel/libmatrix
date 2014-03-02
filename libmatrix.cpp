@@ -1,11 +1,7 @@
-#include <Tpetra_DefaultPlatform.hpp>
-#include <Tpetra_Vector.hpp>
-#include <Tpetra_Version.hpp>
-#include <Tpetra_CrsMatrix.hpp>
-#include <Tpetra_RowMatrixTransposer.hpp>
+#include "typedefs.h"
+#include "utils.h"
 
-#include <BelosTpetraAdapter.hpp>
-#include <BelosSolverFactory.hpp>
+#include <mpi.h>
 
 #include <Teuchos_XMLParameterListCoreHelpers.hpp>
 #include <Teuchos_GlobalMPISession.hpp>
@@ -13,9 +9,18 @@
 #include <Teuchos_DefaultMpiComm.hpp>
 #include <Teuchos_oblackholestream.hpp>
 
+#include <Tpetra_DefaultPlatform.hpp>
+#include <Tpetra_Vector.hpp>
+#include <Tpetra_Version.hpp>
+#include <Tpetra_CrsMatrix.hpp>
+
+#include <BelosTpetraAdapter.hpp>
+#include <BelosSolverFactory.hpp>
+
 #include <Ifpack2_Factory.hpp>
 
-#include <mpi.h>
+typedef int handle_t;
+typedef uint8_t token_t;
 
 #define ASSERT( cond ) if ( ! (cond) ) throw( "assertion failed: " #cond );
 
@@ -54,22 +59,13 @@ inline bool contains( T iterable, V value ) {
   return false;
 }
 
-typedef double scalar_t;
-typedef int number_t;
-typedef int handle_t;
-typedef int local_t;
-typedef long global_t;
-typedef uint8_t token_t;
-typedef bool bool_t;
-
 typedef Kokkos::DefaultNode::DefaultNodeType node_t;
 typedef Tpetra::Map<local_t,global_t,node_t> map_t;
-typedef Tpetra::Vector<scalar_t,local_t,global_t,node_t> vector_t;
 typedef Tpetra::Operator<scalar_t,local_t,global_t,node_t> operator_t;
 typedef Tpetra::MultiVector<scalar_t,local_t,global_t,node_t> multivector_t;
 typedef Tpetra::RowMatrix<scalar_t,local_t,global_t,node_t> rowmatrix_t;
-typedef Tpetra::RowMatrixTransposer<scalar_t,local_t,global_t,node_t> rowmatrixtransposer_t;
 typedef Tpetra::CrsMatrix<scalar_t,local_t,global_t,node_t> crsmatrix_t;
+typedef Tpetra::Vector<scalar_t,local_t,global_t,node_t> vector_t;
 typedef Tpetra::CrsGraph<local_t,global_t,node_t> crsgraph_t;
 typedef Tpetra::RowGraph<local_t,global_t,node_t> rowgraph_t;
 typedef Belos::SolverFactory<scalar_t,multivector_t,operator_t> solverfactory_t;
@@ -569,6 +565,23 @@ private:
   
     gather( &norm );
   }
+
+  void vector_abs() /* compute abs(vec)
+     
+       -> broadcast HANDLE handle.{vec,abs}
+  */{
+
+    struct { handle_t vec, abs; } handle;
+    bcast( &handle );
+  
+    auto vec = objects.get<vector_t>( handle.vec, out(DEBUG) );
+  
+    out(INFO) << "creating vector #" << handle.abs << " from vector #" << handle.vec << std::endl;
+  
+    auto absvec = utils::vector::abs( vec );
+  
+    objects.set( handle.abs, absvec, out(DEBUG) );
+  }
   
   void vector_sum() /* compute the sum of a vector
      
@@ -960,8 +973,7 @@ private:
     auto preconT = precon;
     if( !params->get("Symmetric",false) )
     {
-      rowmatrixtransposer_t tr ( B );
-      BT = tr.createTranspose();
+      BT = utils::matrix::transpose( B );
 
       preconT = preconfactory.create( supportedPreconNames[handle.precontype], BT );
       preconT->setParameters( *preconparams );
@@ -973,30 +985,11 @@ private:
     ASSERT( BT->getRangeMap()== B->getRangeMap() );
     ASSERT( BT->getRowMap()  == B->getRangeMap() );
 
-  /*+++++++++++++++++++++++++++
-    + Matrix 1-norm           +
-    + (inf-norm of transpose) +
-    +++++++++++++++++++++++++++*/
+  /*+++++++++++++++++++++++
+    + Matrix 1-norm       +
+    +++++++++++++++++++++++*/
 
-    local_t irow;
-    scalar_t norm1B = 0.;
-    scalar_t rowsum;
-    Teuchos::ArrayView<const local_t> indices;
-    Teuchos::ArrayView<const scalar_t> values;
-
-    for( irow=0 ; irow<BT->getRowMap()->getNodeNumElements() ; irow++ )
-    {
-      BT->getLocalRowView(irow, indices, values);
-      rowsum = 0.;
-      for( auto &v : values ) rowsum += std::abs(v);
-      if( rowsum > norm1B ) norm1B=rowsum;
-    }
-
-    if (BT->isDistributed())
-    {
-      scalar_t lnorm1B = norm1B;
-      Teuchos::reduceAll(*BT->getRowMap()->getComm(),Teuchos::REDUCE_MAX,lnorm1B,Teuchos::outArg(norm1B));
-    }
+    auto norm1B = utils::matrix::norm1( B );
 
   /*+++++++++++++++++++++++
     + Hager's algorithm   +
@@ -1044,7 +1037,7 @@ private:
       ASSERT( xi_vals.size()==y_vals.size() );
 
       xi->putScalar(1.);
-      for( irow=0; irow<xi_vals.size() ; irow++ )
+      for( local_t irow=0; irow<xi_vals.size() ; irow++ )
       {
         if( y_vals[irow] < 0. ) xi_vals[irow] = -1.;
       }
@@ -1063,7 +1056,7 @@ private:
 
       scalar_t max    = NAN;
       local_t  argmax = -1;
-      for( irow=0 ; irow<z->getMap()->getNodeNumElements() ; irow++ )
+      for( local_t irow=0 ; irow<z->getMap()->getNodeNumElements() ; irow++ )
       {
         if( std::isnan(max) || std::abs(z->getData()[irow])>max )
         {
